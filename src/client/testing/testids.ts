@@ -13,6 +13,7 @@ export const TESTID = {
   app: {
     header: 'app.header',
     navTodos: 'app.nav.todos',
+    navBilliards: 'app.nav.billiards',
     navDesignSystem: 'app.nav.design-system',
     themeToggle: 'app.controls.theme-toggle',
     designToggle: 'app.controls.design-toggle',
@@ -38,6 +39,19 @@ export const TESTID = {
     paginationPrev: 'todos.pagination.prev',
     paginationNext: 'todos.pagination.next',
     paginationStatus: 'todos.pagination.status',
+  },
+  billiards: {
+    page: 'billiards.page',
+    canvas: 'billiards.canvas',
+    control: (name: string) => `billiards.control.${name}`,
+    strike: 'billiards.actions.strike',
+    pause: 'billiards.actions.pause',
+    step: 'billiards.actions.step',
+    reset: 'billiards.actions.reset',
+    resetPhysics: 'billiards.actions.reset-physics',
+    showPrediction: 'billiards.control.show-prediction',
+    ballState: (id: string) => `billiards.state.${id}`,
+    eventLog: 'billiards.event-log',
   },
   designSystem: {
     page: 'design-system.page',

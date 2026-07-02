@@ -9,6 +9,7 @@ import { BrowserRouter, NavLink, Route, Routes } from 'react-router';
 import { SUPPORTED_LOCALES, type Locale } from '@shared/i18n';
 
 import { LocaleProvider, useI18n } from './i18n/locale-context';
+import { BilliardsPage } from './pages/billiards-page';
 import { DesignSystemPage } from './pages/design-system-page';
 import { NotFoundPage } from './pages/not-found-page';
 import { TodosPage } from './pages/todos-page';
@@ -43,6 +44,9 @@ function Header() {
         {/* NavLink sets aria-current="page" on the active route automatically. */}
         <NavLink to="/" end data-testid={TESTID.app.navTodos}>
           {t('nav.todos')}
+        </NavLink>
+        <NavLink to="/billiards" data-testid={TESTID.app.navBilliards}>
+          {t('nav.billiards')}
         </NavLink>
         <NavLink to="/design-system" data-testid={TESTID.app.navDesignSystem}>
           {t('nav.designSystem')}
@@ -91,6 +95,7 @@ function Shell() {
       <main id="main" className="app-main">
         <Routes>
           <Route path="/" element={<TodosPage />} />
+          <Route path="/billiards" element={<BilliardsPage />} />
           <Route path="/design-system" element={<DesignSystemPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
