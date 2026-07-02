@@ -4,6 +4,7 @@ import {
   CAROM_TABLE,
   cloneBalls,
   DEFAULT_PARAMS,
+  identityQuat,
   isAtRest,
   predictPaths,
   SIM_DT,
@@ -20,6 +21,7 @@ function ball(id: string, x: number, y: number): BallState {
     position: { x, y },
     velocity: { x: 0, y: 0 },
     spin: { x: 0, y: 0, z: 0 },
+    orientation: identityQuat(),
   };
 }
 
@@ -165,6 +167,45 @@ describe('friction and spin', () => {
   });
 });
 
+describe('orientation quaternion', () => {
+  test('a resting ball keeps the identity orientation', () => {
+    const balls = [ball('cue', 0, 0)];
+    runSteps(balls, 600);
+    expect(balls[0]!.orientation).toEqual(identityQuat());
+  });
+
+  test('pure rolling along +x accumulates exactly the axis-angle rotation', () => {
+    // Frictionless params keep v (and thus ω = v/R about ŷ) constant, so
+    // after time t the orientation must be a rotation of (v/R)·t about ŷ.
+    const params: PhysicsParams = { ...DEFAULT_PARAMS, slidingFriction: 0, rollingFriction: 0 };
+    const R = params.ballRadius;
+    const v = 1.2;
+    const balls = [ball('cue', -1.2, 0)];
+    balls[0]!.velocity = { x: v, y: 0 };
+    balls[0]!.spin = { x: 0, y: v / R, z: 0 };
+    const steps = Math.round(0.5 / SIM_DT);
+    runSteps(balls, steps, params);
+    const angle = (v / R) * steps * SIM_DT;
+    const q = balls[0]!.orientation;
+    expect(q.x).toBeCloseTo(0, 9);
+    expect(q.y).toBeCloseTo(Math.sin(angle / 2), 6);
+    expect(q.z).toBeCloseTo(0, 9);
+    expect(q.w).toBeCloseTo(Math.cos(angle / 2), 6);
+  });
+
+  test('the orientation stays a unit quaternion through a full shot', () => {
+    const balls = [ball('cue', -0.7, -0.1), ball('red', 0.5, 0.1)];
+    strike(balls[0]!, { speed: 3, directionRad: 0.4, topspin: 60, sidespin: -40, rollspin: 25 });
+    runToRest(balls);
+    for (const b of balls) {
+      const q = b.orientation;
+      expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 9);
+    }
+    // The struck ball must have actually rotated away from the identity.
+    expect(Math.abs(balls[0]!.orientation.w)).toBeLessThan(1 - 1e-6);
+  });
+});
+
 describe('cushion rebound', () => {
   test('perpendicular hit reflects with the restitution coefficient', () => {
     const balls = [ball('cue', 1.2, 0)];
@@ -245,7 +286,9 @@ describe('ball–ball collision', () => {
     const copy = cloneBalls(original);
     copy[0]!.position.x = 9;
     copy[0]!.spin.z = 9;
+    copy[0]!.orientation.w = 0;
     expect(original[0]!.position.x).toBe(0.1);
     expect(original[0]!.spin.z).toBe(0);
+    expect(original[0]!.orientation.w).toBe(1);
   });
 });
