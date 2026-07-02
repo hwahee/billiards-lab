@@ -4,7 +4,7 @@
  * @shared/billiards/physics — this file only fixes the concrete scenario.
  */
 import type { MessageKey } from '@shared/i18n';
-import type { BallState, StrikeInput } from '@shared/billiards/physics';
+import { identityQuat, type BallState, type StrikeInput } from '@shared/billiards/physics';
 
 export type BallId = 'white' | 'yellow' | 'redA' | 'redB';
 
@@ -39,6 +39,7 @@ export function createInitialBalls(): BallState[] {
     position: { x, y },
     velocity: { x: 0, y: 0 },
     spin: { x: 0, y: 0, z: 0 },
+    orientation: identityQuat(),
   });
   return [
     at('white', -0.75, -0.15),

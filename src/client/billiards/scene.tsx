@@ -3,7 +3,7 @@
  *
  * Physics coordinates are the table plane (x, y) with z up; three.js space is
  * y-up, so a point maps as (x, y) → [x, height, −y] — a proper rotation, so
- * spin axes map the same way: ω(x,y,z) → [ωx, ωz, −ωy].
+ * the orientation quaternion maps the same way: (x, y, z, w) → (x, z, −y, w).
  *
  * The frame loop (inside <BallMeshes/>) advances the deterministic engine
  * with a fixed-step accumulator; rendering only mirrors the mutable state.
@@ -128,8 +128,8 @@ function BallMeshes({ sim }: { sim: BilliardsSim }) {
       const mesh = meshRefs.current.get(ball.id);
       if (!mesh) continue;
       mesh.position.set(ball.position.x, BALL_RADIUS, -ball.position.y);
-      const orientation = sim.orientationsRef.current.get(ball.id);
-      if (orientation) mesh.quaternion.copy(orientation);
+      const q = ball.orientation;
+      mesh.quaternion.set(q.x, q.z, -q.y, q.w);
     }
   });
 

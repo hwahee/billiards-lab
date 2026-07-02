@@ -28,11 +28,23 @@ Coordinates: table plane x/y, z up, SI units. Equal-mass uniform spheres,
 `I = 2/5·m·R²`. Fixed step `SIM_DT = 1/600 s` — determinism requires that the
 step never varies, so the render loop feeds an accumulator, never `dt`.
 
-- **Strike** (`strike()`): sets `v = speed·d̂ + lateralSpeed·(ẑ×d̂)` and
-  `ω = topspin·(ẑ×d̂) − rollspin·d̂ + sidespin·ẑ`. Topspin > 0 matches
-  natural forward roll; sidespin > 0 bends the rebound to the left of
-  travel; lateralSpeed > 0 starts the ball moving left of the aim;
-  rollspin > 0 (spin around the travel axis) curves the path to the left.
+Rotation is quaternion-based: every ball starts at the identity quaternion
+and carries its orientation as part of the physics state. Each step advances
+it by `q ← Δq(ω·dt) ⊗ q` from the angular velocity ω, so rolling, cushion
+rebounds and ball–ball impacts (which change ω) all flow into the visible
+rotation through the same quaternion integration. ω itself stays a vector —
+an instantaneous rotation _rate_ is a vector, the quaternion is the
+accumulated rotation _state_. Rendering only converts the quaternion into
+three.js axes (`(x, y, z, w) → (x, z, −y, w)`).
+
+- **Strike** (`strike()`): one aim quaternion (rotation about ẑ by the
+  direction) carries the aim frame onto the table. In the aim frame
+  forward = x̂, left = ŷ, up = ẑ, so `v = (speed, lateralSpeed, ·)` and
+  `ω = (−rollspin, topspin, sidespin)`; both are rotated by the quaternion
+  into world space. Topspin > 0 matches natural forward roll; sidespin > 0
+  bends the rebound to the left of travel; lateralSpeed > 0 starts the ball
+  moving left of the aim; rollspin > 0 (spin around the travel axis) curves
+  the path to the left.
 - **Sliding regime**: cloth friction `−μs·m·g·û` acts opposite the
   contact-point slip `u = v + ω×(−R·ẑ)`; `|u|` decays at `3.5·μs·g`.
   This converts topspin/backspin into follow/draw, and converts rollspin

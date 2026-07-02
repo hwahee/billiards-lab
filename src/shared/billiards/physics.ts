@@ -11,6 +11,13 @@
  * Coordinates: the table plane is x/y, z points up. All units are SI
  * (metres, seconds, radians). Rendering maps this onto three.js space.
  *
+ * Rotation is quaternion-based: each ball carries its orientation as a unit
+ * quaternion, advanced every step by q ← Δq(ω·dt) ⊗ q from the angular
+ * velocity ω. Rolling, cushion rebounds and ball–ball impacts change ω, and
+ * the quaternion integration turns that into the visible rotation. ω itself
+ * stays a vector because an instantaneous rotation *rate* is a vector — the
+ * quaternion is the accumulated rotation *state*.
+ *
  * Model summary (equal-mass uniform spheres, I = 2/5·m·R²):
  *  - Sliding regime: cloth friction −μs·m·g acts opposite the contact-point
  *    slip u = v + ω×(−R·ẑ); slip magnitude decays at 3.5·μs·g until the ball
@@ -40,6 +47,37 @@ interface Vec3 {
   z: number;
 }
 
+/** Unit quaternion (x, y, z, w) representing a rotation. */
+interface Quat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
+/** The identity rotation — the reference pose every ball starts from. */
+export function identityQuat(): Quat {
+  return { x: 0, y: 0, z: 0, w: 1 };
+}
+
+function quatFromAxisAngle(axis: Vec3, angle: number): Quat {
+  const s = Math.sin(angle / 2);
+  return { x: axis.x * s, y: axis.y * s, z: axis.z * s, w: Math.cos(angle / 2) };
+}
+
+/** Rotates a vector by a unit quaternion: v' = q·v·q⁻¹. */
+function rotateByQuat(q: Quat, v: Vec3): Vec3 {
+  // t = 2·(q_vec × v); v' = v + w·t + q_vec × t.
+  const tx = 2 * (q.y * v.z - q.z * v.y);
+  const ty = 2 * (q.z * v.x - q.x * v.z);
+  const tz = 2 * (q.x * v.y - q.y * v.x);
+  return {
+    x: v.x + q.w * tx + (q.y * tz - q.z * ty),
+    y: v.y + q.w * ty + (q.z * tx - q.x * tz),
+    z: v.z + q.w * tz + (q.x * ty - q.y * tx),
+  };
+}
+
 export interface BallState {
   id: string;
   /** Ball-centre position on the table plane (m). */
@@ -48,6 +86,8 @@ export interface BallState {
   velocity: Vec2;
   /** Angular velocity (rad/s); z is the vertical axis. */
   spin: Vec3;
+  /** Accumulated rotation from the initial pose, as a unit quaternion. */
+  orientation: Quat;
 }
 
 export interface TableConfig {
@@ -136,25 +176,25 @@ export interface StrikeInput {
   rollspin?: number;
 }
 
-/** Sets a ball's state from the strike variables (replaces v and ω). */
+/**
+ * Sets a ball's state from the strike variables (replaces v and ω).
+ *
+ * A single quaternion carries the aim frame onto the table: in the aim frame
+ * forward is x̂, left is ŷ, up is ẑ, so the strike is simply
+ * v = (speed, lateral, ·) and ω = (−rollspin, topspin, sidespin) — topspin
+ * about the left axis matches natural forward roll, rollspin about −forward
+ * matches natural leftward roll (curves left), sidespin about up. Rotating
+ * both by the aim quaternion yields the world-frame state.
+ */
 export function strike(ball: BallState, input: StrikeInput): void {
-  const dx = Math.cos(input.directionRad);
-  const dy = Math.sin(input.directionRad);
-  const lateral = input.lateralSpeed ?? 0;
-  const roll = input.rollspin ?? 0;
-  // Left of travel is l̂ = ẑ×d̂ = (−dy, dx).
-  ball.velocity = {
-    x: input.speed * dx - lateral * dy,
-    y: input.speed * dy + lateral * dx,
-  };
-  // Topspin axis is ẑ×d̂ so that spin > 0 matches natural forward roll.
-  // Rollspin axis is −d̂ so that spin > 0 matches natural leftward roll
-  // (a ball rolling toward l̂ has ω = −|v|/R·d̂), i.e. it curves left.
-  ball.spin = {
-    x: -dy * input.topspin - dx * roll,
-    y: dx * input.topspin - dy * roll,
+  const aim = quatFromAxisAngle({ x: 0, y: 0, z: 1 }, input.directionRad);
+  const v = rotateByQuat(aim, { x: input.speed, y: input.lateralSpeed ?? 0, z: 0 });
+  ball.velocity = { x: v.x, y: v.y };
+  ball.spin = rotateByQuat(aim, {
+    x: -(input.rollspin ?? 0),
+    y: input.topspin,
     z: input.sidespin,
-  };
+  });
 }
 
 export type CollisionEvent =
@@ -177,7 +217,36 @@ export function cloneBalls(balls: readonly BallState[]): BallState[] {
     position: { ...ball.position },
     velocity: { ...ball.velocity },
     spin: { ...ball.spin },
+    orientation: { ...ball.orientation },
   }));
+}
+
+/**
+ * Advances the orientation quaternion by the world-frame angular velocity
+ * over one step: q ← Δq ⊗ q with Δq = (ω̂·sin(|ω|·dt/2), cos(|ω|·dt/2)).
+ * Renormalising each step keeps floating-point drift from denormalising q.
+ */
+function integrateOrientation(ball: BallState, dt: number): void {
+  const w = ball.spin;
+  const mag = Math.hypot(w.x, w.y, w.z);
+  if (mag < 1e-12) return;
+  const half = (mag * dt) / 2;
+  const s = Math.sin(half) / mag;
+  const dx = w.x * s;
+  const dy = w.y * s;
+  const dz = w.z * s;
+  const dw = Math.cos(half);
+  const q = ball.orientation;
+  const { x, y, z, w: qw } = q;
+  q.x = dw * x + dx * qw + dy * z - dz * y;
+  q.y = dw * y - dx * z + dy * qw + dz * x;
+  q.z = dw * z + dx * y - dy * x + dz * qw;
+  q.w = dw * qw - dx * x - dy * y - dz * z;
+  const n = Math.hypot(q.x, q.y, q.z, q.w);
+  q.x /= n;
+  q.y /= n;
+  q.z /= n;
+  q.w /= n;
 }
 
 /** Cloth friction + spin decay for one ball over one step. */
@@ -367,6 +436,7 @@ export function stepPhysics(
     integrateFriction(ball, params, dt);
     ball.position.x += ball.velocity.x * dt;
     ball.position.y += ball.velocity.y * dt;
+    integrateOrientation(ball, dt);
     collideWithCushions(ball, table, params, events);
   }
   for (let i = 0; i < balls.length; i += 1) {

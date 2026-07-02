@@ -1,13 +1,13 @@
 /**
  * State container for the billiards page.
  *
- * The physics state (balls, orientations, sim clock) lives in mutable refs so
- * the render loop can advance it at 600 Hz without going through React.
- * React state holds only what the UI renders: the control values, the phase,
- * a low-frequency snapshot of the balls, and the collision log.
+ * The physics state (balls — each carrying its orientation quaternion — and
+ * the sim clock) lives in mutable refs so the render loop can advance it at
+ * 600 Hz without going through React. React state holds only what the UI
+ * renders: the control values, the phase, a low-frequency snapshot of the
+ * balls, and the collision log.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { Quaternion, Vector3 } from 'three';
 
 import {
   CAROM_TABLE,
@@ -42,9 +42,6 @@ const MAX_LOGGED_EVENTS = 24;
 /** Collisions with the same signature within this window are one contact. */
 const EVENT_DEDUPE_WINDOW = 0.08;
 
-const tmpAxis = new Vector3();
-const tmpQuat = new Quaternion();
-
 export interface BilliardsSim {
   phase: SimPhase;
   shot: ShotSettings;
@@ -66,7 +63,6 @@ export interface BilliardsSim {
   simSpeedRef: RefObject<number>;
   physicsRef: RefObject<PhysicsParams>;
   ballsRef: RefObject<BallState[]>;
-  orientationsRef: RefObject<Map<string, Quaternion>>;
   /** Advances the physics by `steps` fixed SIM_DT steps. */
   advance: (steps: number) => void;
 }
@@ -81,9 +77,6 @@ export function useBilliardsSim(): BilliardsSim {
   const [events, setEvents] = useState<SimEvent[]>([]);
 
   const ballsRef = useRef<BallState[]>(createInitialBalls());
-  const orientationsRef = useRef<Map<string, Quaternion>>(
-    new Map(createInitialBalls().map((b) => [b.id, new Quaternion()])),
-  );
   const simTimeRef = useRef(0);
   const phaseRef = useRef<SimPhase>('idle');
   const physicsRef = useRef(physics);
@@ -138,18 +131,6 @@ export function useBilliardsSim(): BilliardsSim {
           lastEventRef.current = { signature, time: simTimeRef.current };
           logged.push({ time: simTimeRef.current, event });
         }
-
-        // Spin the rendered meshes: world-frame ω → three.js axes (x, z, −y).
-        for (const ball of balls) {
-          const w = ball.spin;
-          const mag = Math.hypot(w.x, w.y, w.z);
-          if (mag < 1e-3) continue;
-          const q = orientationsRef.current.get(ball.id);
-          if (!q) continue;
-          tmpAxis.set(w.x / mag, w.z / mag, -w.y / mag);
-          tmpQuat.setFromAxisAngle(tmpAxis, mag * SIM_DT);
-          q.premultiply(tmpQuat);
-        }
       }
 
       if (logged.length > 0) {
@@ -174,7 +155,6 @@ export function useBilliardsSim(): BilliardsSim {
 
   const reset = useCallback(() => {
     ballsRef.current = createInitialBalls();
-    orientationsRef.current = new Map(ballsRef.current.map((b) => [b.id, new Quaternion()]));
     simTimeRef.current = 0;
     lastEventRef.current = null;
     setEvents([]);
@@ -223,7 +203,6 @@ export function useBilliardsSim(): BilliardsSim {
     simSpeedRef,
     physicsRef,
     ballsRef,
-    orientationsRef,
     advance,
   };
 }
