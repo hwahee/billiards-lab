@@ -1,15 +1,15 @@
 /**
- * Billiards page configuration: the four carom balls (Korean 4-ball layout)
- * and the default strike variables. Physics itself lives in
- * @shared/billiards/physics — this file only fixes the concrete scenario.
+ * Billiards page configuration: how the four carom balls are rendered and
+ * the default strike variables. The game data itself (initial layout, state
+ * shape) lives in @shared/billiards/game-state, the physics in
+ * @shared/billiards/physics — this file only fixes the presentation.
  */
 import type { MessageKey } from '@shared/i18n';
-import { identityQuat, type BallState, type StrikeInput } from '@shared/billiards/physics';
-
-export type BallId = 'white' | 'yellow' | 'redA' | 'redB';
+import type { BilliardsBallId } from '@shared/billiards/game-state';
+import type { StrikeInput } from '@shared/billiards/physics';
 
 export interface BallSpec {
-  id: BallId;
+  id: BilliardsBallId;
   /** Base surface colour. */
   color: string;
   /** Colour of the painted marks (make rotation visible). */
@@ -17,7 +17,7 @@ export interface BallSpec {
   labelKey: MessageKey;
 }
 
-export const CUE_BALL_ID: BallId = 'white';
+export const CUE_BALL_ID: BilliardsBallId = 'white';
 
 export const BALL_SPECS: readonly BallSpec[] = [
   { id: 'white', color: '#f4efe2', markColor: '#c8372c', labelKey: 'billiards.ball.white' },
@@ -30,23 +30,6 @@ export function ballSpec(id: string): BallSpec {
   const spec = BALL_SPECS.find((s) => s.id === id);
   if (!spec) throw new Error(`unknown ball id: ${id}`);
   return spec;
-}
-
-/** Opening layout (metres, table centre = origin). */
-export function createInitialBalls(): BallState[] {
-  const at = (id: BallId, x: number, y: number): BallState => ({
-    id,
-    position: { x, y },
-    velocity: { x: 0, y: 0 },
-    spin: { x: 0, y: 0, z: 0 },
-    orientation: identityQuat(),
-  });
-  return [
-    at('white', -0.75, -0.15),
-    at('yellow', -0.75, 0.18),
-    at('redA', 0.45, 0.12),
-    at('redB', 0.85, -0.18),
-  ];
 }
 
 export interface ShotSettings {

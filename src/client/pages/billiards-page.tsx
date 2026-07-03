@@ -19,7 +19,9 @@ import {
 import { ballSpec, BALL_SPECS, CUE_BALL_ID, toStrikeInput } from '../billiards/config';
 import { BilliardsControls } from '../billiards/controls';
 import { BilliardsScene } from '../billiards/scene';
-import { useBilliardsSim, type SimEvent } from '../billiards/use-billiards';
+import type { SimEvent } from '@shared/billiards/game-state';
+
+import { useBilliardsSim } from '../billiards/use-billiards';
 import { useI18n } from '../i18n/locale-context';
 import { TESTID } from '../testing/testids';
 

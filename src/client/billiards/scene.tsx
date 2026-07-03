@@ -124,7 +124,7 @@ function BallMeshes({ sim }: { sim: BilliardsSim }) {
         sim.advance(steps);
       }
     }
-    for (const ball of sim.ballsRef.current) {
+    for (const ball of sim.gameRef.current.balls) {
       const mesh = meshRefs.current.get(ball.id);
       if (!mesh) continue;
       mesh.position.set(ball.position.x, BALL_RADIUS, -ball.position.y);
