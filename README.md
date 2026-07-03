@@ -1,185 +1,88 @@
-# Bun Fullstack Boilerplate
+# Billiards Lab
 
-React + Bun + Bun server 기반의 풀스택 모노레포 보일러플레이트입니다. 서버와 클라이언트가
-하나의 저장소에서 살고, 공통 코드는 `src/shared`에 둡니다.
+결정론적 캐롬(4구) 당구 시뮬레이션 실험실입니다. 타격 변수(속도 벡터, 스핀 축/세기)와
+물리 계수를 정하면 미끄러짐→구름 전환, 쿠션 반사, 공끼리의 충격량 교환까지 전체 진행이
+고정 타임스텝 순수 연산으로 계산됩니다. 엔진이 완전히 결정론적이므로 화면의 "예측 경로"는
+근사가 아니라 실제 시뮬레이션이 따라갈 궤적 그 자체입니다.
 
-```
-src/
-├── shared/          # 서버·클라이언트 공통 (양쪽 모두에서 import 가능)
-│   ├── validation/  # 스키마 검증 파사드 (현재 zod/mini, 교체 가능)
-│   ├── i18n/        # 로케일 협상 + 메시지 카탈로그 (en/ko)
-│   ├── time/        # UTC 전용 시간 유틸 (경계에서만 타임존 변환)
-│   ├── api/         # 페이지네이션 규약, 에러 엔벨로프, 버전 핸드셰이크
-│   └── domain/      # 도메인 타입 + 검증기 (서버·클라이언트 공용 계약)
-├── server/          # Bun server (API + 클라이언트 서빙 + 워커)
-│   ├── http/        # 라우트 공통 미들웨어 (CORS, 버전, 에러 매핑, locale)
-│   ├── routes/      # 엔드포인트 정의
-│   ├── services/    # 비즈니스 로직 (트랜잭션 경계가 여기서 드러남)
-│   ├── repositories/# 영속성 계약 + postgres/in-memory 구현
-│   ├── db/          # Bun 내장 SQL 드라이버, 마이그레이션 러너
-│   ├── pubsub/      # 인스턴스 간 통신 (memory/redis 드라이버)
-│   └── container.ts # 컴포지션 루트 — 프로세스당 싱글톤 관리
-└── client/          # React SPA
-    ├── api/         # ★ 모든 API가 endpoints.ts 한 곳에 문서화되어 모임
-    ├── ui/          # 디자인 시스템 컴포넌트
-    ├── styles/      # 디자인 토큰 (라이트/다크 × 디자인 A/B)
-    ├── theme/ i18n/ # 테마·로케일 컨텍스트
-    ├── testing/     # data-testid 레지스트리 (docs/ui-automation.md 참고)
-    └── pages/       # Todos(데모), Design System, NotFound
-```
+렌더링은 three.js / @react-three/fiber, 물리는 렌더링 의존성이 없는 순수 TypeScript입니다.
+
+![타격 전 예측 경로 오버레이 — 스핀 조합에 따라 휘어지는 궤적까지 그대로 미리 보여줍니다](docs/images/billiards-prediction.png)
+
+## 주요 기능
+
+- **결정론적 물리 엔진** — 고정 스텝(1/600 s) 순수 함수. 같은 입력은 언제나 같은 궤적을
+  만들고, 그 덕분에 예측 경로 오버레이가 실제 결과와 정확히 일치합니다.
+- **쿼터니온 기반 회전** — 각 공은 단위 쿼터니온으로 자세(orientation)를 유지하며, 매
+  스텝 각속도로부터 `q ← Δq(ω·dt) ⊗ q`로 적분됩니다. 구르기, 쿠션 반사, 공끼리 충돌로
+  각속도가 바뀌면 그대로 눈에 보이는 회전에 반영됩니다.
+- **타격 변수** — 초기 속도·방향·횡속도, 탑스핀/백스핀(밀어치기·끌어치기),
+  사이드스핀(회전 반사), 롤스핀(미끄러지는 동안 휘어지는 곡선 구질)을 슬라이더로 조절.
+- **물리 계수 실시간 튜닝** — 마찰(미끄럼/구름/스핀 감쇠), 쿠션·공 반발/마찰 계수를
+  조절하면 예측 경로가 즉시 다시 계산됩니다.
+- **시뮬레이션 제어** — 재생 속도(0.1–3×), 일시정지/재개, 1/60 s 단위 스텝 실행, 리셋.
+- **라이브 상태 판독** — 공별 속도·각속도, 시뮬레이션 시계, 충돌 로그(쿠션/공, 타임스탬프).
+
+## 스크린샷
+
+시뮬레이션 진행 중 — 충돌 로그에 쿠션·공 충돌이 시간순으로 쌓입니다:
+
+![시뮬레이션 진행 화면과 충돌 로그](docs/images/billiards-running.png)
+
+공 표면의 마크로 회전이 그대로 보입니다(쿼터니온 자세를 three.js에 매핑):
+
+![회전하는 공 클로즈업](docs/images/billiards-spin.png)
 
 ## 시작하기
 
 ```bash
-bun install               # 의존성 설치 (+ husky 훅 설치)
-cp .env.example .env      # 환경 설정 — 비밀값은 절대 커밋 금지
+bun install               # 의존성 설치
+cp .env.example .env      # 환경 설정
 
-bun run db:setup          # docker로 Postgres 기동 + 마이그레이션 + 시드 (한 번에)
-bun run dev               # 개발 서버 (서버 watch + 클라이언트 HMR) → http://localhost:3000
+DB_DRIVER=memory bun run dev   # 외부 서비스 없이 바로 실행 → http://localhost:3000/billiards
 ```
 
-DB 없이 바로 실행하려면 `.env`에서 `DB_DRIVER=memory`로 바꾸면 됩니다(테스트도 이 드라이버를 사용).
+당구 페이지는 DB가 필요 없습니다. Todos 데모까지 Postgres로 쓰려면 `bun run db:setup` 후
+`bun run dev`를 실행하세요.
 
-| 명령            | 설명                                                                  |
-| --------------- | --------------------------------------------------------------------- |
-| `bun run dev`   | 개발 모드. 서버 자동 재시작 + 클라이언트 HMR                          |
-| `bun test`      | 단위 + API 통합 테스트. 외부 환경 불필요 (in-memory DB), 한 번에 실행 |
-| `bun run check` | prettier + eslint + tsc + knip + test 전체 게이트 (pre-push와 동일)   |
-| `bun run build` | 프로덕션 빌드 → `dist/` (서버가 클라이언트를 포함하는 단일 산출물)    |
-| `bun run start` | 빌드 산출물 실행                                                      |
-| `bun run db:*`  | `db:up` / `db:migrate` / `db:seed` / `db:setup`                       |
+| 명령            | 설명                                                                |
+| --------------- | ------------------------------------------------------------------- |
+| `bun run dev`   | 개발 모드 (서버 watch + 클라이언트 HMR)                             |
+| `bun test`      | 단위 + 통합 테스트 — 물리 엔진의 결정론/스핀/충돌 테스트 포함       |
+| `bun run check` | prettier + eslint + tsc + knip + test 전체 게이트 (pre-push와 동일) |
+| `bun run build` | 프로덕션 빌드 → `dist/`                                             |
 
-## 아키텍처 결정
+## 코드 배치
 
-### 의존 방향 (ESLint로 강제)
+| 구성 요소                               | 경로                                    |
+| --------------------------------------- | --------------------------------------- |
+| 물리 엔진 (순수 TS, 렌더링 의존성 없음) | `src/shared/billiards/physics.ts`       |
+| 엔진 테스트 (결정론, 스핀, 쿠션, 충돌)  | `src/shared/billiards/physics.test.ts`  |
+| 시나리오 (공 배치, 기본 타격값)         | `src/client/billiards/config.ts`        |
+| 시뮬레이션 상태 컨테이너 (refs + React) | `src/client/billiards/use-billiards.ts` |
+| 3D 씬 (테이블, 공, 예측 경로)           | `src/client/billiards/scene.tsx`        |
+| 컨트롤 패널                             | `src/client/billiards/controls.tsx`     |
+| 페이지                                  | `src/client/pages/billiards-page.tsx`   |
 
-- `client` → `server` 런타임 import **금지** (타입 전용 import는 허용).
-- `shared` → `server`/`client` import 금지.
-- `zod`는 `src/shared/validation` 안에서만 import 가능 — 나머지는 전부 파사드를 통합니다.
+## 물리 모델 (요약)
 
-### 검증 파사드 (`@shared/validation`)
+좌표는 테이블 평면 x/y, z 위쪽, SI 단위. 균일 밀도 동일 질량 구(`I = 2/5·m·R²`) 가정.
 
-모든 소비자는 라이브러리 중립적인 `Validator<T>` 인터페이스(`parse`/`safeParse`)에만
-의존합니다. 현재 구현은 zod/mini이며, yup 등으로 바꾸려면 어댑터 하나를 새로 쓰고
-스키마 정의 파일만 갱신하면 됩니다. 라우트·폼·설정 로딩 코드는 전혀 바뀌지 않습니다.
+- **타격**: 조준 방향 쿼터니온 하나가 조준 좌표계(전방·좌측·상방)의 속도
+  `(speed, lateral, ·)`와 스핀 `(−rollspin, topspin, sidespin)`을 월드 좌표로 회전.
+- **미끄럼 구간**: 접점 슬립 반대 방향으로 천 마찰이 작용 — 탑스핀/백스핀이
+  밀어치기/끌어치기가 되고, 롤스핀이 곡선 구질이 되는 원리.
+- **구름 구간**: 무슬립 제약 아래 구름 저항으로 감속.
+- **쿠션**: 법선 반발 + 접선 마찰 충격량 — 사이드스핀이 반사각을 눈에 띄게 바꿉니다.
+- **공–공**: 법선 반발 충격량 + 접선 마찰 충격량(스핀 전달, "스로우").
+- **회전 상태**: 공마다 단위 쿼터니온을 매 스텝 각속도로 적분 — 자세한 내용은 아래 문서로.
 
-### 시간 정책
+전체 수식과 계수 설명은 **[docs/billiards.md](docs/billiards.md)** 를 참고하세요.
 
-서버 내부는 항상 UTC입니다(`process.env.TZ = 'UTC'`, DB는 `timestamptz`, 애플리케이션은
-`UtcIsoString` 브랜드 타입). 타임존 변환은 오직 경계에서만 — 클라이언트가
-`formatUtcInTimeZone`으로 표시할 때 수행합니다.
+## 기반 스택
 
-### 목록 API 규약 (`@shared/api/pagination`)
-
-모든 목록 엔드포인트는 `?page&pageSize&sortBy&sortOrder` + 엔드포인트별 평면 필터
-파라미터를 받고, `Page<T>` 엔벨로프(`items/page/pageSize/totalItems/totalPages/hasNextPage`)로
-응답합니다. 정렬 필드는 엔드포인트별 화이트리스트로만 허용됩니다.
-
-### 환경 설정
-
-로컬/개발/운영 전환은 `.env`(또는 배포 환경 변수) 교체 한 번으로 끝나며 코드 수정이
-필요 없습니다. 모든 설정은 부팅 시 `src/server/config.ts`에서 검증됩니다.
-`.env*`는 gitignore되어 있고 `.env.example`만 커밋합니다.
-
-### 데이터베이스
-
-- 기본 Postgres(Bun 내장 SQL 클라이언트, 외부 패키지 없음). 리포지토리 인터페이스
-  (`src/server/repositories/types.ts`) 뒤에 있어서 다른 DB로 교체하려면 구현 파일 하나만
-  새로 쓰면 됩니다. 테스트·로컬용 in-memory 구현이 이미 동일 계약을 따릅니다.
-- 마이그레이션: `migrations/NNNN_name.sql` 파일이 곧 스키마 이력입니다.
-  `bun run db:migrate`가 순서대로 적용하고 `schema_migrations`에 기록하며, advisory lock으로
-  다중 인스턴스 동시 기동에도 안전합니다. 시드는 `bun run db:seed`(멱등).
-- 트랜잭션 경계는 서비스 계층의 `uow.run(async (tx) => { … })` 블록으로 명시됩니다
-  (예: `TodoService.create` — todo insert + audit log가 원자적).
-- N+1: 목록 조회는 `count(*) OVER ()` 윈도 함수로 데이터+총계를 한 번에 가져옵니다.
-  연관 행이 생기면 행별 쿼리 대신 `WHERE id IN (…)` 배치 조회를 사용하세요
-  (리포지토리 주석 참고).
-
-### 수평 확장
-
-- **pub/sub 버스** (`src/server/pubsub`): 인스턴스 간 통신 추상화. 기본 `memory`,
-  다중 인스턴스에서는 `PUBSUB_DRIVER=redis`(+`REDIS_URL`)로 전환 — Bun 내장 Redis
-  클라이언트를 사용하며 코드 변경이 없습니다.
-- **워커 역할**: `SERVER_ROLE=web|worker|all`. 같은 바이너리를 HTTP 전용/백그라운드 잡
-  전용으로 나눠 띄울 수 있습니다. 잡은 pub/sub `jobs` 채널로 흐릅니다(`src/server/worker.ts`).
-- **싱글톤**: 컨테이너(`src/server/container.ts`)에서 resolve되는 모든 서비스는 프로세스당
-  싱글톤(lazy + memoized)입니다. 새로 싱글톤이 필요하면 같은 방식으로 등록하면 됩니다.
-- **WebSocket**: `/ws`로 todo 변경 이벤트를 push합니다. 브리지가 pub/sub을 경유하므로
-  redis 드라이버에서는 다른 인스턴스에 붙은 소켓에도 팬아웃됩니다.
-
-### Graceful shutdown & 롤링 배포 버전 스큐
-
-SIGTERM/SIGINT 수신 시: ① readiness가 즉시 503으로 바뀌어 LB가 트래픽을 뺌
-(`SHUTDOWN_DRAIN_MS` 동안 대기) → ② 처리 중인 요청을 끝까지 마친 뒤 리스너 종료
-→ ③ DB/Redis 등 자원 정리 후 종료.
-
-롤링 배포 중 구버전 클라이언트 ↔ 신버전 서버(또는 그 반대) 조합 문제는 버전
-핸드셰이크로 차단합니다: 빌드 시 git SHA가 서버·클라이언트 번들 양쪽에 주입되고
-(`APP_BUILD_VERSION` define), 클라이언트는 모든 API 요청에 `X-App-Version` 헤더를
-보냅니다. 불일치 시 서버가 409 `VERSION_MISMATCH`를 반환하고 클라이언트는 1회
-새로고침하여 새 서버의 에셋을 받아옵니다. 서버 번들이 자신과 같은 빌드의 클라이언트를
-내장하므로(단일 산출물) 항상 정합성이 보장됩니다. (`src/shared/api/version.ts`)
-
-### 헬스체크
-
-- `GET /api/health/live` — 프로세스 생존 (의존성 안 봄)
-- `GET /api/health/ready` — DB 연결 여부 구분(`db: up|down`), 종료 중이면 503
-
-### CORS
-
-허용 origin은 `CORS_ORIGINS` 환경 변수(콤마 구분)로만 제어합니다. 와일드카드 없음,
-암묵적 허용 없음 (`src/server/http/cors.ts`).
-
-### i18n
-
-`@shared/i18n` 파사드를 서버(에러 메시지 — `Accept-Language`/`?lang=` 협상)와
-클라이언트(UI 문자열 — 로케일 컨텍스트)가 공유합니다. 로케일 추가는 카탈로그 파일
-하나 + 등록 한 줄입니다. DB에는 로케일 독립적인 데이터만 저장합니다.
-
-## 클라이언트
-
-- **API 카탈로그**: 모든 엔드포인트는 `src/client/api/endpoints.ts` 한 곳에 상세 주석과
-  함께 정의됩니다. 컴포넌트는 `fetch`를 직접 부르지 않고 이 카탈로그(또는 그 위의
-  TanStack Query 훅 `queries.ts`)만 사용합니다.
-- **TanStack Query**: 목록 조회는 로딩/에러(재시도 버튼)/데이터/빈 상태를 모두 처리하고,
-  mutation은 성공 시 목록 캐시를 invalidate합니다. 상태 토글은 **optimistic update**
-  (스냅샷 → 즉시 반영 → 실패 시 롤백 → settle 시 재동기화)로 구현되어 있습니다.
-- **최소 상태**: 페이지/필터/정렬은 URL 쿼리에서 파생, 서버 데이터는 쿼리 캐시에만 존재.
-  로컬 `useState`는 "아직 제출 안 된 폼 입력"뿐입니다.
-- **라우팅**: react-router (BrowserRouter). 서버의 SPA 캐치올이 딥링크를 지원합니다.
-- **디자인 시스템**: 토큰 3계층(원시 → 디자인 치수 → 시맨틱 컬러)으로 구성되며
-  `/design-system` 페이지에서 전부 확인할 수 있습니다. `<html>`의 `data-theme`
-  (light/dark)와 `data-design`(A=심미성/B=시인성) 속성만으로 전환됩니다 — 헤더의 토글
-  버튼으로 즉시 스위칭됩니다. 아이콘은 lucide-react.
-- **UI 자동화 / 접근성**: 모든 인터랙티브 컴포넌트는 `testId`가 **필수 prop**이며 값은
-  `src/client/testing/testids.ts` 레지스트리에서만 나옵니다. WAI-ARIA(라벨, live region,
-  `aria-busy`, `aria-current`, skip link, 네이티브 컨트롤 우선)를 준수합니다.
-  전체 규약은 **[docs/ui-automation.md](docs/ui-automation.md)** 한 문서에서 확인하세요.
-
-## CI / DX
-
-- **GitHub Actions** (`.github/workflows/ci.yml`): 모든 push마다
-  prettier → eslint → tsc → knip → test → build.
-- **husky + lint-staged**: pre-commit에 staged 파일 lint/format, pre-push에
-  `bun run check` 전체 게이트.
-- **빌드**: Bun 번들러 단독 사용. `bun run build` 한 번으로 서버+클라이언트+마이그레이터가
-  `dist/`에 떨어집니다. 개발 모드는 Bun의 HTML import 기반 HMR.
-- **Docker**:
-  - DB만: `bun run db:up` (redis 포함: `docker compose --profile redis up -d`)
-  - 컨테이너 안에서 빌드까지: `docker compose --profile app up --build`
-    (멀티스테이지 Dockerfile — 런타임 이미지에는 빌드 산출물만 포함)
-
-## GraphQL을 도입한다면 (가이드)
-
-이 보일러플레이트는 REST 기반이지만, GraphQL을 붙일 경우 **persisted query** 방식을
-따르세요: 앱 안에 정의된 각 쿼리의 핑거프린트(해시)를 빌드 시 저장해 두고, 일반
-사용자 토큰은 등록된 해시의 쿼리만 실행할 수 있게 하며, 임의 쿼리는 관리자 토큰에만
-허용합니다. 버전 핸드셰이크(`X-App-Version`)와 동일하게 빌드 시점 주입 패턴을 재사용할
-수 있습니다.
-
-## 테스트 전략
-
-- **단위**: 비즈니스 로직(`TodoService`) — 트랜잭션 롤백, 이벤트 발행, 성공/실패 케이스.
-- **통합**: 실제 앱을 임시 포트에 띄워 HTTP로 검증 — CRUD, 페이지네이션/정렬/필터,
-  검증 실패(400)와 로컬라이즈된 메시지, 404, 버전 스큐(409), CORS 허용/거부, 헬스체크.
-- 전부 in-memory 드라이버로 돌므로 **`bun test` 하나로, 외부 환경 없이** 실행됩니다.
+이 저장소는 React + Bun 풀스택 모노레포 보일러플레이트 위에 만들어졌습니다
+(검증 파사드, i18n, 디자인 시스템, in-memory/Postgres 리포지토리, CI 게이트 등).
+보일러플레이트 자체의 구조와 아키텍처 결정은 **[docs/boilerplate.md](docs/boilerplate.md)**,
+UI 자동화/테스트 규약은 **[docs/ui-automation.md](docs/ui-automation.md)** 에 정리되어
+있습니다.
