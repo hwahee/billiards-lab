@@ -1,36 +1,186 @@
 /**
- * Billiards page configuration: how the four carom balls are rendered and
- * the default strike variables. The game data itself (initial layout, state
- * shape) lives in @shared/billiards/game-state, the physics in
- * @shared/billiards/physics — this file only fixes the presentation.
+ * Billiards page configuration: the presets (carom / pool) available on the
+ * page, how each preset's balls are rendered, and the default strike
+ * variables. The game data itself (initial layout, state shape) lives in
+ * @shared/billiards/game-state, the physics in @shared/billiards/physics —
+ * this file only fixes the presentation and picks which preset is active.
  */
-import type { MessageKey } from '@shared/i18n';
-import type { BilliardsBallId } from '@shared/billiards/game-state';
-import type { StrikeInput } from '@shared/billiards/physics';
+import type { MessageKey, MessageParams } from '@shared/i18n';
+import {
+  createInitialGameState,
+  createPoolGameState,
+  type BilliardsGameState,
+} from '@shared/billiards/game-state';
+import {
+  CAROM_TABLE,
+  DEFAULT_PARAMS,
+  POOL_TABLE,
+  type StrikeInput,
+  type TableConfig,
+} from '@shared/billiards/physics';
 
 export interface BallSpec {
-  id: BilliardsBallId;
-  /** Base surface colour. */
+  id: string;
+  /** Base surface colour (solid balls) or stripe colour (striped balls). */
   color: string;
-  /** Colour of the painted marks (make rotation visible). */
-  markColor: string;
+  /** Colour of the painted marks on plain balls (make rotation visible). */
+  markColor?: string;
   labelKey: MessageKey;
+  labelParams?: MessageParams;
+  /** Ball number for pool's numbered balls (1–15); absent for carom / cue balls. */
+  number?: number;
+  /** Pool ball rendering style; absent for carom balls. */
+  style?: 'solid' | 'stripe' | 'cue';
 }
 
-export const CUE_BALL_ID: BilliardsBallId = 'white';
-
-export const BALL_SPECS: readonly BallSpec[] = [
+const CAROM_BALL_SPECS: readonly BallSpec[] = [
   { id: 'white', color: '#f4efe2', markColor: '#c8372c', labelKey: 'billiards.ball.white' },
   { id: 'yellow', color: '#e5b93a', markColor: '#f4efe2', labelKey: 'billiards.ball.yellow' },
   { id: 'redA', color: '#c8372c', markColor: '#f4efe2', labelKey: 'billiards.ball.redA' },
   { id: 'redB', color: '#8f2a21', markColor: '#f4efe2', labelKey: 'billiards.ball.redB' },
 ];
 
+/** Standard solid-ball colours 1–8; a striped ball 9–15 reuses its solid counterpart's colour. */
+const SOLID_COLORS: readonly string[] = [
+  '#d9a520', // 1 yellow
+  '#1f5fbf', // 2 blue
+  '#c8372c', // 3 red
+  '#5b2a86', // 4 purple
+  '#d9701f', // 5 orange
+  '#1f7a3d', // 6 green
+  '#7a2530', // 7 maroon
+  '#1a1a1a', // 8 black
+];
+
+const POOL_BALL_SPECS: readonly BallSpec[] = [
+  {
+    id: 'cue',
+    color: '#f4efe2',
+    markColor: '#c8372c',
+    labelKey: 'billiards.ball.cue',
+    style: 'cue',
+  },
+  ...Array.from({ length: 15 }, (_, i): BallSpec => {
+    const number = i + 1;
+    const color = SOLID_COLORS[(number - 1) % 8]!;
+    return {
+      id: String(number),
+      color,
+      labelKey: 'billiards.ball.numbered',
+      labelParams: { number },
+      number,
+      style: number <= 8 ? 'solid' : 'stripe',
+    };
+  }),
+];
+
+const ALL_BALL_SPECS: readonly BallSpec[] = [...CAROM_BALL_SPECS, ...POOL_BALL_SPECS];
+
 export function ballSpec(id: string): BallSpec {
-  const spec = BALL_SPECS.find((s) => s.id === id);
+  const spec = ALL_BALL_SPECS.find((s) => s.id === id);
   if (!spec) throw new Error(`unknown ball id: ${id}`);
   return spec;
 }
+
+/** Resolves a ball's display name, interpolating its number for pool balls. */
+export function ballLabel(
+  t: (key: MessageKey, params?: MessageParams) => string,
+  id: string,
+): string {
+  const spec = ballSpec(id);
+  return t(spec.labelKey, spec.labelParams);
+}
+
+export type BilliardsVariant = 'carom' | 'pool';
+
+export interface BilliardsPreset {
+  variant: BilliardsVariant;
+  table: TableConfig;
+  cueBallId: string;
+  ballSpecs: readonly BallSpec[];
+  labelKey: MessageKey;
+  createState: () => BilliardsGameState;
+}
+
+/**
+ * Pocketed-ball holding tray: one dedicated area just outside a short
+ * (vertical) edge of the table, laid out as a grid so simultaneously
+ * pocketed balls sit spaced apart instead of piling on top of each other.
+ * Only meaningful for tables with pockets.
+ */
+const TRAY_MARGIN = 0.06;
+const TRAY_ROWS = 2;
+const TRAY_COLS = 8;
+const TRAY_SLOT_GAP = DEFAULT_PARAMS.ballRadius * 2.4;
+const TRAY_SLOT_COUNT = TRAY_ROWS * TRAY_COLS;
+
+/** The (row, col) grid slot's centre, `index` counting row-major from 0. */
+function traySlotPosition(table: TableConfig, index: number): { x: number; y: number } {
+  const row = Math.floor(index / TRAY_COLS);
+  const col = index % TRAY_COLS;
+  return {
+    x: table.width / 2 + TRAY_MARGIN + (row + 0.5) * TRAY_SLOT_GAP,
+    y: (col - (TRAY_COLS - 1) / 2) * TRAY_SLOT_GAP,
+  };
+}
+
+/**
+ * The first tray slot not already sat in by one of `occupied`'s positions
+ * (other potted balls already resting in the tray). Falls back to extending
+ * the grid one more row if every slot is somehow taken.
+ */
+export function nextFreeTraySlot(
+  table: TableConfig,
+  occupied: readonly { x: number; y: number }[],
+): { x: number; y: number } {
+  const R = DEFAULT_PARAMS.ballRadius;
+  for (let i = 0; i < TRAY_SLOT_COUNT; i += 1) {
+    const slot = traySlotPosition(table, i);
+    if (!occupied.some((p) => Math.hypot(p.x - slot.x, p.y - slot.y) < R * 1.5)) return slot;
+  }
+  return traySlotPosition(table, occupied.length);
+}
+
+/** Rectangular footprint of the whole tray grid (table coordinates), for drawing its shelf. */
+export function trayFootprint(table: TableConfig): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const R = DEFAULT_PARAMS.ballRadius;
+  return {
+    x: table.width / 2 + TRAY_MARGIN + (TRAY_ROWS * TRAY_SLOT_GAP) / 2,
+    y: 0,
+    width: TRAY_ROWS * TRAY_SLOT_GAP + R,
+    height: TRAY_COLS * TRAY_SLOT_GAP + R,
+  };
+}
+
+/** Whether (x, y) lies within the legal playing bounds of `table` (ball-radius inset). */
+export function isOnFelt(table: TableConfig, x: number, y: number): boolean {
+  const R = DEFAULT_PARAMS.ballRadius;
+  return Math.abs(x) <= table.width / 2 - R && Math.abs(y) <= table.height / 2 - R;
+}
+
+export const PRESETS: Record<BilliardsVariant, BilliardsPreset> = {
+  carom: {
+    variant: 'carom',
+    table: CAROM_TABLE,
+    cueBallId: 'white',
+    ballSpecs: CAROM_BALL_SPECS,
+    labelKey: 'billiards.preset.carom',
+    createState: createInitialGameState,
+  },
+  pool: {
+    variant: 'pool',
+    table: POOL_TABLE,
+    cueBallId: 'cue',
+    ballSpecs: POOL_BALL_SPECS,
+    labelKey: 'billiards.preset.pool',
+    createState: createPoolGameState,
+  },
+};
 
 export interface ShotSettings {
   /** m/s */

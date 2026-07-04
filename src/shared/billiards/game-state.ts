@@ -14,7 +14,9 @@
  * advance loop with collision logging.
  */
 import {
+  DEFAULT_PARAMS,
   identityQuat,
+  POOL_TABLE,
   SIM_DT,
   stepPhysics,
   strike,
@@ -26,7 +28,7 @@ import {
 } from './physics';
 
 /** The four carom balls (Korean 4-ball layout). */
-export type BilliardsBallId = 'white' | 'yellow' | 'redA' | 'redB';
+type BilliardsBallId = 'white' | 'yellow' | 'redA' | 'redB';
 
 /** A logged collision with the simulation clock at the moment of contact. */
 export interface SimEvent {
@@ -72,6 +74,48 @@ export function createInitialGameState(): BilliardsGameState {
   };
 }
 
+/**
+ * Standard 8-ball rack, apex to back row: the apex is the 1-ball, the 8-ball
+ * sits at the centre of the middle (3-ball) row, and the back (5-ball) row's
+ * two corners are one solid (7) and one stripe (15), as required by the
+ * regulation rack rule. Every number 1–15 appears exactly once.
+ */
+const POOL_RACK: readonly (readonly number[])[] = [
+  [1],
+  [9, 2],
+  [10, 8, 3],
+  [11, 4, 5, 12],
+  [7, 13, 6, 14, 15],
+];
+
+/** Opening pool layout: cue ball behind the head string, 15 balls racked at the foot spot. */
+export function createPoolGameState(): BilliardsGameState {
+  const R = DEFAULT_PARAMS.ballRadius;
+  const rowSpacing = R * Math.sqrt(3) * 1.001; // tiny gap avoids exact-touching overlap
+  const ballSpacing = 2 * R * 1.001;
+  const footSpotX = POOL_TABLE.width * 0.22;
+  const headSpotX = -POOL_TABLE.width * 0.28;
+
+  const at = (id: string, x: number, y: number): BallState => ({
+    id,
+    position: { x, y },
+    velocity: { x: 0, y: 0 },
+    spin: { x: 0, y: 0, z: 0 },
+    orientation: identityQuat(),
+  });
+
+  const balls: BallState[] = [at('cue', headSpotX, 0)];
+  POOL_RACK.forEach((row, r) => {
+    const x = footSpotX + r * rowSpacing;
+    row.forEach((number, k) => {
+      const y = (k - r / 2) * ballSpacing;
+      balls.push(at(String(number), x, y));
+    });
+  });
+
+  return { balls, simTime: 0, events: [], lastEvent: null };
+}
+
 /** Applies the strike variables to one ball of the state (replaces v and ω). */
 export function strikeBall(state: BilliardsGameState, ballId: string, input: StrikeInput): void {
   const ball = state.balls.find((b) => b.id === ballId);
@@ -101,7 +145,11 @@ export function advanceGameState(
 
     for (const event of collisions) {
       const signature =
-        event.type === 'ball' ? `ball:${event.ballId}:${event.otherId}` : `cushion:${event.ballId}`;
+        event.type === 'ball'
+          ? `ball:${event.ballId}:${event.otherId}`
+          : event.type === 'cushion'
+            ? `cushion:${event.ballId}`
+            : `pocket:${event.ballId}`;
       const last = state.lastEvent;
       if (last?.signature === signature && state.simTime - last.time < EVENT_DEDUPE_WINDOW) {
         last.time = state.simTime;

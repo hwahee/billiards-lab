@@ -10,6 +10,8 @@ import { useI18n } from '../i18n/locale-context';
 import { TESTID } from '../testing/testids';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
+import { Select } from '../ui/select';
+import { PRESETS, type BilliardsVariant } from './config';
 import type { BilliardsSim } from './use-billiards';
 
 function SliderRow({
@@ -94,6 +96,20 @@ const PHYSICS_SLIDERS: readonly PhysicsSliderSpec[] = [
   { key: 'ballFriction', labelKey: 'billiards.ballFriction', min: 0, max: 0.25, step: 0.01 },
 ];
 
+/** Only shown for presets whose table has pockets. */
+const POCKET_SLIDER: PhysicsSliderSpec = {
+  key: 'pocketCaptureSpeed',
+  labelKey: 'billiards.pocketCaptureSpeed',
+  min: 0.2,
+  max: 3,
+  step: 0.1,
+};
+
+const PRESET_OPTIONS: readonly { value: BilliardsVariant; labelKey: MessageKey }[] = [
+  { value: 'carom', labelKey: PRESETS.carom.labelKey },
+  { value: 'pool', labelKey: PRESETS.pool.labelKey },
+];
+
 export function BilliardsControls({
   sim,
   showPrediction,
@@ -105,9 +121,27 @@ export function BilliardsControls({
 }) {
   const { t } = useI18n();
   const { phase, shot, setShot, physics, setPhysics } = sim;
+  const hasPockets = Boolean(PRESETS[sim.variant].table.pockets);
+  const physicsSliders = hasPockets ? [...PHYSICS_SLIDERS, POCKET_SLIDER] : PHYSICS_SLIDERS;
+  const cueBallId = PRESETS[sim.variant].cueBallId;
+  const cueIsPotted = sim.snapshot.find((ball) => ball.id === cueBallId)?.potted ?? false;
 
   return (
     <div className="billiards-panel">
+      <section className="billiards-group">
+        <h3>{t('billiards.group.table')}</h3>
+        <Select
+          label={t('billiards.preset.label')}
+          value={sim.variant}
+          options={PRESET_OPTIONS.map((option) => ({
+            value: option.value,
+            label: t(option.labelKey),
+          }))}
+          onChange={sim.setVariant}
+          testId={TESTID.billiards.control('preset')}
+        />
+      </section>
+
       <section className="billiards-group">
         <h3>{t('billiards.group.shot')}</h3>
         <SliderRow
@@ -174,7 +208,7 @@ export function BilliardsControls({
           <Button
             testId={TESTID.billiards.strike}
             onClick={sim.strikeCue}
-            disabled={phase !== 'idle'}
+            disabled={phase !== 'idle' || cueIsPotted}
           >
             {t('billiards.strike')}
           </Button>
@@ -198,11 +232,14 @@ export function BilliardsControls({
             {t('billiards.reset')}
           </Button>
         </div>
+        {phase === 'idle' && cueIsPotted && (
+          <p className="muted billiards-cue-potted-hint">{t('billiards.cuePottedHint')}</p>
+        )}
       </section>
 
       <section className="billiards-group">
         <h3>{t('billiards.group.physics')}</h3>
-        {PHYSICS_SLIDERS.map((spec) => (
+        {physicsSliders.map((spec) => (
           <SliderRow
             key={spec.key}
             name={spec.key}
