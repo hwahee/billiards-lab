@@ -52,3 +52,49 @@ export function makeBallTexture(baseColor: string, markColor: string): CanvasTex
   texture.anisotropy = 4;
   return texture;
 }
+
+/**
+ * Pool ball texture: a solid ball is coloured all over, a striped ball is a
+ * white base with a coloured equatorial band; both get the number in a white
+ * circle at the same two "pole" spots used for the plain balls above, so the
+ * rotation stays readable.
+ */
+export function makeNumberedBallTexture(spec: {
+  color: string;
+  number: number;
+  style: 'solid' | 'stripe';
+}): CanvasTexture {
+  const width = 512;
+  const height = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D canvas context unavailable');
+
+  const base = spec.style === 'stripe' ? '#f4efe2' : spec.color;
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, width, height);
+
+  if (spec.style === 'stripe') {
+    ctx.fillStyle = spec.color;
+    ctx.fillRect(0, height * 0.28, width, height * 0.44);
+  }
+
+  for (const cx of [width * 0.25, width * 0.75]) {
+    ctx.fillStyle = '#f4efe2';
+    ctx.beginPath();
+    ctx.arc(cx, height / 2, 34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#161616';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(spec.number), cx, height / 2 + 3);
+  }
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}

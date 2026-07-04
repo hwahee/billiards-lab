@@ -3,10 +3,11 @@ import { describe, expect, test } from 'bun:test';
 import {
   advanceGameState,
   createInitialGameState,
+  createPoolGameState,
   strikeBall,
   type BilliardsGameState,
 } from './game-state';
-import { CAROM_TABLE, DEFAULT_PARAMS, SIM_DT } from './physics';
+import { CAROM_TABLE, DEFAULT_PARAMS, isAtRest, POOL_TABLE, SIM_DT, stepPhysics } from './physics';
 
 function roundTrip(state: BilliardsGameState): BilliardsGameState {
   return JSON.parse(JSON.stringify(state)) as BilliardsGameState;
@@ -23,6 +24,45 @@ describe('initial state', () => {
       expect(ball.velocity).toEqual({ x: 0, y: 0 });
       expect(ball.orientation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
     }
+  });
+});
+
+describe('pool rack', () => {
+  test('racks the cue ball plus all 15 numbered balls exactly once, all at rest', () => {
+    const state = createPoolGameState();
+    expect(state.balls.map((b) => b.id).sort()).toEqual(
+      ['cue', ...Array.from({ length: 15 }, (_, i) => String(i + 1))].sort(),
+    );
+    for (const ball of state.balls) {
+      expect(ball.velocity).toEqual({ x: 0, y: 0 });
+      expect(ball.orientation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+    }
+  });
+
+  test('the 8-ball sits at the centre of the rack and no two balls overlap', () => {
+    const state = createPoolGameState();
+    const eight = state.balls.find((b) => b.id === '8')!;
+    const cue = state.balls.find((b) => b.id === 'cue')!;
+    expect(eight.position.y).toBeCloseTo(0, 9);
+    expect(eight.position.x).toBeGreaterThan(cue.position.x);
+
+    const R = DEFAULT_PARAMS.ballRadius;
+    const objectBalls = state.balls.filter((b) => b.id !== 'cue');
+    for (let i = 0; i < objectBalls.length; i += 1) {
+      for (let j = i + 1; j < objectBalls.length; j += 1) {
+        const a = objectBalls[i]!.position;
+        const b = objectBalls[j]!.position;
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(2 * R - 1e-9);
+      }
+    }
+  });
+
+  test('the racked layout is a stable rest state (a lone strike-free step changes nothing)', () => {
+    const state = createPoolGameState();
+    const before = JSON.parse(JSON.stringify(state.balls)) as typeof state.balls;
+    stepPhysics(state.balls, POOL_TABLE, DEFAULT_PARAMS, SIM_DT);
+    expect(isAtRest(state.balls, DEFAULT_PARAMS)).toBe(true);
+    expect(state.balls).toEqual(before);
   });
 });
 

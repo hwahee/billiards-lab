@@ -1,7 +1,8 @@
 # Billiards Lab (`/billiards`)
 
-A deterministic carom (pocketless) billiards simulation rendered with
-three.js / @react-three/fiber / @react-three/drei.
+A deterministic billiards simulation rendered with three.js /
+@react-three/fiber / @react-three/drei, with two selectable presets: carom
+(pocketless, 4 balls) and pool (6 pockets, 15 numbered balls + cue ball).
 
 The goal is **not** a realistic "feel of hitting a ball" but a variable
 laboratory: you set the strike vector, the spin axis / rate and the physical
@@ -12,17 +13,17 @@ played back in 3D. Because the engine is a fixed-timestep pure function, the
 
 ## Where things live
 
-| Piece                                             | Path                                      |
-| ------------------------------------------------- | ----------------------------------------- |
-| Physics engine (pure TS, no rendering deps)       | `src/shared/billiards/physics.ts`         |
-| Engine tests (determinism, draw/follow, cushions) | `src/shared/billiards/physics.test.ts`    |
-| Serializable game state (layout, strike, advance) | `src/shared/billiards/game-state.ts`      |
-| Game-state tests (JSON round-trip, collision log) | `src/shared/billiards/game-state.test.ts` |
-| Presentation config (colours, default shot)       | `src/client/billiards/config.ts`          |
-| Sim state container (refs + React state)          | `src/client/billiards/use-billiards.ts`   |
-| 3D scene (table, balls, prediction lines)         | `src/client/billiards/scene.tsx`          |
-| Control panel                                     | `src/client/billiards/controls.tsx`       |
-| Page                                              | `src/client/pages/billiards-page.tsx`     |
+| Piece                                                      | Path                                      |
+| ---------------------------------------------------------- | ----------------------------------------- |
+| Physics engine (pure TS, no rendering deps), incl. pockets | `src/shared/billiards/physics.ts`         |
+| Engine tests (determinism, draw/follow, cushions, pockets) | `src/shared/billiards/physics.test.ts`    |
+| Serializable game state (layouts, strike, advance)         | `src/shared/billiards/game-state.ts`      |
+| Game-state tests (JSON round-trip, collision log, rack)    | `src/shared/billiards/game-state.test.ts` |
+| Presets (carom/pool tables, ball specs, default shot)      | `src/client/billiards/config.ts`          |
+| Sim state container (refs + React state, preset switch)    | `src/client/billiards/use-billiards.ts`   |
+| 3D scene (table, pockets, balls, prediction lines)         | `src/client/billiards/scene.tsx`          |
+| Control panel (incl. preset selector)                      | `src/client/billiards/controls.tsx`       |
+| Page                                                       | `src/client/pages/billiards-page.tsx`     |
 
 ## Physics model
 
@@ -64,6 +65,28 @@ three.js axes (`(x, y, z, w) → (x, z, −y, w)`).
   which produces deterministic "throw" and spin transfer. Follow/draw after
   impact emerges naturally: the cue ball keeps its ω through the impact and
   cloth friction re-converts it into motion.
+- **Pockets** (pool only): the table carries six circular pocket mouths —
+  the 4 corners plus the middle of each long rail. Each step, a ball not yet
+  potted is checked against every pocket; if its centre lies inside the
+  mouth's radius and its speed is at or below `pocketCaptureSpeed`, it is
+  flagged `potted`, its velocity/spin are zeroed, and it is teleported just
+  outside the rail. Potted balls are frozen: skipped entirely by friction,
+  cushion and ball–ball collision from then on. A ball moving faster than
+  `pocketCaptureSpeed` passes straight over the mouth instead of dropping —
+  the deliberate stand-in for modelling real pocket-jaw geometry.
+
+## Presets
+
+- **Carom** (`CAROM_TABLE`, `createInitialGameState`): 4 balls (white cue +
+  yellow + two reds), no pockets.
+- **Pool** (`POOL_TABLE`, `createPoolGameState`): cue ball behind the head
+  string plus 15 numbered balls racked in the standard triangle at the foot
+  spot — apex is the 1-ball, the 8-ball sits at the centre of the middle
+  row, and the back row's two corners are one solid (7) and one stripe (15).
+  Six pockets as described above.
+
+Switching the **Game** selector in the Table group re-racks the layout via
+the preset's `createState()` and resets the sim clock/collision log.
 
 ## UI variables
 
@@ -72,7 +95,7 @@ three.js axes (`(x, y, z, w) → (x, z, −y, w)`).
   roll spin around the travel axis (rad/s, curves the sliding path).
 - **Physics coefficients**: μs, μr, μsp, cushion restitution & friction,
   ball restitution & friction — all adjustable live; the prediction reruns
-  on every change.
+  on every change. Pool adds a pocket capture speed slider.
 - **Simulation**: playback speed (0.1–3×), pause / resume, single-step
   (1/60 s), reset, prediction overlay toggle.
 - **Live state**: per-ball `|v|` and `|ω|`, sim clock, and a collision log

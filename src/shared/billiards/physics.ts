@@ -1,5 +1,6 @@
 /**
- * Deterministic billiards physics on a pocketless (carom) table.
+ * Deterministic billiards physics for both pocketless (carom) and pocket
+ * (pool) tables.
  *
  * This is intentionally NOT a general physics engine. Given the initial
  * strike variables (velocity vector, spin axis / angular speed) and a set of
@@ -34,6 +35,13 @@
  *    (capped at μb·|Jn|) on the horizontal contact slip, which transfers spin
  *    ("throw"). Follow/draw after impact emerges from the retained ω of the
  *    cue ball being re-converted by cloth friction.
+ *  - Pockets (pool tables only): a ball centred inside a pocket's mouth,
+ *    moving at or below `pocketCaptureSpeed`, is captured — flagged
+ *    `potted` and teleported to a resting spot just outside the rail. Potted
+ *    balls are frozen and excluded from every further integration and
+ *    collision. Faster balls passing over the mouth are not captured
+ *    (they "rattle" past it), which is the deliberate simplification asked
+ *    for in place of modelling real pocket-jaw geometry.
  */
 
 interface Vec2 {
@@ -88,6 +96,15 @@ export interface BallState {
   spin: Vec3;
   /** Accumulated rotation from the initial pose, as a unit quaternion. */
   orientation: Quat;
+  /** True once captured by a pocket; frozen off-table, excluded from physics. */
+  potted?: boolean;
+}
+
+/** A circular pocket mouth: a ball centred within `radius` of (x, y) can be captured. */
+interface Pocket {
+  x: number;
+  y: number;
+  radius: number;
 }
 
 export interface TableConfig {
@@ -95,6 +112,8 @@ export interface TableConfig {
   width: number;
   /** Playing surface along y (m). */
   height: number;
+  /** Pocket mouths (corners + rail middles); absent on pocketless tables. */
+  pockets?: readonly Pocket[];
 }
 
 export interface PhysicsParams {
@@ -122,6 +141,8 @@ export interface PhysicsParams {
   stopSpeed: number;
   /** Spin magnitude below which residual spin is snapped to zero (rad/s). */
   stopSpin: number;
+  /** Speed at/below which a ball centred in a pocket mouth is captured (m/s). */
+  pocketCaptureSpeed: number;
 }
 
 export const DEFAULT_PARAMS: PhysicsParams = {
@@ -137,10 +158,38 @@ export const DEFAULT_PARAMS: PhysicsParams = {
   ballFriction: 0.06,
   stopSpeed: 0.01,
   stopSpin: 0.35,
+  pocketCaptureSpeed: 1.3,
 };
 
-/** International carom table playing surface. */
+/** International carom table playing surface (no pockets). */
 export const CAROM_TABLE: TableConfig = { width: 2.844, height: 1.422 };
+
+const POOL_TABLE_WIDTH = 2.54;
+const POOL_TABLE_HEIGHT = 1.27;
+/** Capture radius of a pocket mouth — generous enough to catch a ball the
+ * cushion clamps into a corner, but not so wide it reaches far up the rail. */
+const POOL_POCKET_RADIUS = DEFAULT_PARAMS.ballRadius * 2.3;
+
+function poolPockets(width: number, height: number, radius: number): Pocket[] {
+  const hw = width / 2;
+  const hh = height / 2;
+  return [
+    { x: -hw, y: -hh, radius },
+    { x: hw, y: -hh, radius },
+    { x: -hw, y: hh, radius },
+    { x: hw, y: hh, radius },
+    // Side pockets: middle of each long rail (the "가로변" / horizontal sides).
+    { x: 0, y: -hh, radius },
+    { x: 0, y: hh, radius },
+  ];
+}
+
+/** Standard 9-foot pool table playing surface, six pockets (4 corners + 2 side). */
+export const POOL_TABLE: TableConfig = {
+  width: POOL_TABLE_WIDTH,
+  height: POOL_TABLE_HEIGHT,
+  pockets: poolPockets(POOL_TABLE_WIDTH, POOL_TABLE_HEIGHT, POOL_POCKET_RADIUS),
+};
 
 /** Fixed integration step (s). Deterministic results require a fixed step. */
 export const SIM_DT = 1 / 600;
@@ -198,7 +247,9 @@ export function strike(ball: BallState, input: StrikeInput): void {
 }
 
 export type CollisionEvent =
-  { type: 'cushion'; ballId: string } | { type: 'ball'; ballId: string; otherId: string };
+  | { type: 'cushion'; ballId: string }
+  | { type: 'ball'; ballId: string; otherId: string }
+  | { type: 'pocket'; ballId: string };
 
 function ballAtRest(ball: BallState, params: PhysicsParams): boolean {
   return (
@@ -218,6 +269,7 @@ export function cloneBalls(balls: readonly BallState[]): BallState[] {
     velocity: { ...ball.velocity },
     spin: { ...ball.spin },
     orientation: { ...ball.orientation },
+    potted: ball.potted,
   }));
 }
 
@@ -361,6 +413,41 @@ function collideWithCushions(
 }
 
 /**
+ * Checks `ball` against every pocket mouth on `table` and captures it (sets
+ * `potted`, freezes it, teleports it to a resting spot just outside the
+ * rail) if it is centred within a pocket's radius and moving at or below
+ * `pocketCaptureSpeed`. No-op on tables without pockets or on already-potted
+ * balls.
+ */
+function checkPockets(
+  ball: BallState,
+  table: TableConfig,
+  params: PhysicsParams,
+  events?: CollisionEvent[],
+): void {
+  if (!table.pockets || ball.potted) return;
+  const speed = Math.hypot(ball.velocity.x, ball.velocity.y);
+  if (speed > params.pocketCaptureSpeed) return;
+
+  for (const pocket of table.pockets) {
+    const dx = ball.position.x - pocket.x;
+    const dy = ball.position.y - pocket.y;
+    if (dx * dx + dy * dy > pocket.radius * pocket.radius) continue;
+
+    ball.potted = true;
+    ball.velocity = { x: 0, y: 0 };
+    ball.spin = { x: 0, y: 0, z: 0 };
+    // Teleport just outside the rail, radially past the pocket mouth.
+    ball.position = {
+      x: pocket.x + Math.sign(pocket.x) * 0.2,
+      y: pocket.y + Math.sign(pocket.y) * 0.2,
+    };
+    events?.push({ type: 'pocket', ballId: ball.id });
+    return;
+  }
+}
+
+/**
  * Ball–ball impact: equal-mass normal restitution impulse plus a capped
  * tangential friction impulse on the horizontal contact slip (includes the
  * R·ωz english terms → deterministic "throw" and spin transfer).
@@ -371,6 +458,7 @@ function collideBallPair(
   params: PhysicsParams,
   events?: CollisionEvent[],
 ): void {
+  if (a.potted || b.potted) return;
   const R = params.ballRadius;
   const m = params.ballMass;
   const dx = b.position.x - a.position.x;
@@ -433,11 +521,13 @@ export function stepPhysics(
   events?: CollisionEvent[],
 ): void {
   for (const ball of balls) {
+    if (ball.potted) continue;
     integrateFriction(ball, params, dt);
     ball.position.x += ball.velocity.x * dt;
     ball.position.y += ball.velocity.y * dt;
     integrateOrientation(ball, dt);
     collideWithCushions(ball, table, params, events);
+    checkPockets(ball, table, params, events);
   }
   for (let i = 0; i < balls.length; i += 1) {
     for (let j = i + 1; j < balls.length; j += 1) {

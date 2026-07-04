@@ -7,16 +7,23 @@
  *
  * The frame loop (inside <BallMeshes/>) advances the deterministic engine
  * with a fixed-step accumulator; rendering only mirrors the mutable state.
+ * The table itself (dimensions, pocket mouths) and the ball set both follow
+ * the active preset (carom vs. pool), so both re-render whenever it changes.
  */
 import { Line, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import type { Mesh } from 'three';
 
-import { CAROM_TABLE, DEFAULT_PARAMS, SIM_DT, type PredictedPath } from '@shared/billiards/physics';
+import {
+  DEFAULT_PARAMS,
+  SIM_DT,
+  type PredictedPath,
+  type TableConfig,
+} from '@shared/billiards/physics';
 
-import { BALL_SPECS, ballSpec, CUE_BALL_ID, type ShotSettings } from './config';
-import { makeBallTexture } from './textures';
+import { ballSpec, PRESETS, type ShotSettings } from './config';
+import { makeBallTexture, makeNumberedBallTexture } from './textures';
 import type { BilliardsSim } from './use-billiards';
 
 const BALL_RADIUS = DEFAULT_PARAMS.ballRadius;
@@ -26,13 +33,16 @@ const FRAME_THICKNESS = 0.11;
 const FRAME_HEIGHT = 0.09;
 /** Trajectory lines float just above the cloth. */
 const PATH_LIFT = 0.004;
+/** Pocket mouth markers float just above the cloth, below the ball centres. */
+const POCKET_LIFT = 0.002;
 
 const CLOTH_COLOR = '#22754b';
 const CUSHION_COLOR = '#1a5c3a';
 const FRAME_COLOR = '#5a3a24';
+const POCKET_COLOR = '#0a0a0a';
 
-function Table() {
-  const { width, height } = CAROM_TABLE;
+function Table({ table }: { table: TableConfig }) {
+  const { width, height, pockets } = table;
   const innerW = width + 2 * CUSHION_THICKNESS;
   const innerH = height + 2 * CUSHION_THICKNESS;
   return (
@@ -96,6 +106,17 @@ function Table() {
           <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
         </mesh>
       ))}
+      {/* Pocket mouths — the capture zones where a slow-enough ball is potted. */}
+      {pockets?.map((pocket, i) => (
+        <mesh
+          key={`pocket-${i}`}
+          position={[pocket.x, POCKET_LIFT, -pocket.y]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <circleGeometry args={[pocket.radius * 0.85, 32]} />
+          <meshStandardMaterial color={POCKET_COLOR} roughness={1} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -103,10 +124,23 @@ function Table() {
 function BallMeshes({ sim }: { sim: BilliardsSim }) {
   const meshRefs = useRef(new Map<string, Mesh>());
   const accumulatorRef = useRef(0);
+  const preset = PRESETS[sim.variant];
 
   const textures = useMemo(
-    () => new Map(BALL_SPECS.map((spec) => [spec.id, makeBallTexture(spec.color, spec.markColor)])),
-    [],
+    () =>
+      new Map(
+        preset.ballSpecs.map((spec) => [
+          spec.id,
+          spec.style === 'solid' || spec.style === 'stripe'
+            ? makeNumberedBallTexture({
+                color: spec.color,
+                number: spec.number!,
+                style: spec.style,
+              })
+            : makeBallTexture(spec.color, spec.markColor ?? '#ffffff'),
+        ]),
+      ),
+    [preset],
   );
   useEffect(() => {
     return () => {
@@ -127,6 +161,8 @@ function BallMeshes({ sim }: { sim: BilliardsSim }) {
     for (const ball of sim.gameRef.current.balls) {
       const mesh = meshRefs.current.get(ball.id);
       if (!mesh) continue;
+      mesh.visible = !ball.potted;
+      if (ball.potted) continue;
       mesh.position.set(ball.position.x, BALL_RADIUS, -ball.position.y);
       const q = ball.orientation;
       mesh.quaternion.set(q.x, q.z, -q.y, q.w);
@@ -135,7 +171,7 @@ function BallMeshes({ sim }: { sim: BilliardsSim }) {
 
   return (
     <>
-      {BALL_SPECS.map((spec) => (
+      {preset.ballSpecs.map((spec) => (
         <mesh
           key={spec.id}
           castShadow
@@ -181,8 +217,9 @@ function PredictionLines({ paths }: { paths: PredictedPath[] }) {
 }
 
 function AimLine({ sim, shot }: { sim: BilliardsSim; shot: ShotSettings }) {
-  const cue = sim.snapshot.find((ball) => ball.id === CUE_BALL_ID);
-  if (!cue) return null;
+  const cueBallId = PRESETS[sim.variant].cueBallId;
+  const cue = sim.snapshot.find((ball) => ball.id === cueBallId);
+  if (!cue || cue.potted) return null;
   const rad = (shot.directionDeg * Math.PI) / 180;
   const length = 0.18 + shot.speed * 0.08;
   const from = [cue.position.x, BALL_RADIUS, -cue.position.y] as const;
@@ -201,6 +238,7 @@ export function BilliardsScene({
   sim: BilliardsSim;
   prediction: PredictedPath[] | null;
 }) {
+  const table = PRESETS[sim.variant].table;
   return (
     <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 2.1, 1.9], fov: 42 }}>
       <color attach="background" args={['#101820']} />
@@ -215,7 +253,7 @@ export function BilliardsScene({
         shadow-camera-top={2}
         shadow-camera-bottom={-2}
       />
-      <Table />
+      <Table table={table} />
       <BallMeshes sim={sim} />
       {prediction && <PredictionLines paths={prediction} />}
       {sim.phase === 'idle' && <AimLine sim={sim} shot={sim.shot} />}

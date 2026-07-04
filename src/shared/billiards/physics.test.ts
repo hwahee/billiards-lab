@@ -6,6 +6,7 @@ import {
   DEFAULT_PARAMS,
   identityQuat,
   isAtRest,
+  POOL_TABLE,
   predictPaths,
   SIM_DT,
   stepPhysics,
@@ -290,5 +291,60 @@ describe('ball–ball collision', () => {
     expect(original[0]!.position.x).toBe(0.1);
     expect(original[0]!.spin.z).toBe(0);
     expect(original[0]!.orientation.w).toBe(1);
+  });
+});
+
+describe('pockets', () => {
+  const R = DEFAULT_PARAMS.ballRadius;
+  // The point the cushions clamp a ball into at a corner (√2·R from the
+  // pocket's centre, well inside every pocket's capture radius).
+  const corner = POOL_TABLE.pockets![0]!;
+  const cornerClampSpot = {
+    x: Math.sign(corner.x) * (POOL_TABLE.width / 2 - R),
+    y: Math.sign(corner.y) * (POOL_TABLE.height / 2 - R),
+  };
+
+  test('a slow ball centred in a corner pocket mouth is captured', () => {
+    const balls = [ball('9', cornerClampSpot.x, cornerClampSpot.y)];
+    const events: CollisionEvent[] = [];
+    stepPhysics(balls, POOL_TABLE, DEFAULT_PARAMS, SIM_DT, events);
+    expect(events).toContainEqual({ type: 'pocket', ballId: '9' });
+    expect(balls[0]!.potted).toBe(true);
+    expect(balls[0]!.velocity).toEqual({ x: 0, y: 0 });
+    // Teleported out past the rail, not left sitting on the table.
+    expect(Math.abs(balls[0]!.position.x)).toBeGreaterThan(POOL_TABLE.width / 2);
+  });
+
+  test('a side pocket (middle of a long rail) also captures a slow ball', () => {
+    const side = POOL_TABLE.pockets![4]!; // { x: 0, y: -height/2 }
+    const balls = [ball('9', 0, Math.sign(side.y) * (POOL_TABLE.height / 2 - R))];
+    stepPhysics(balls, POOL_TABLE, DEFAULT_PARAMS, SIM_DT);
+    expect(balls[0]!.potted).toBe(true);
+  });
+
+  test('a ball moving faster than pocketCaptureSpeed rattles past instead of dropping', () => {
+    const balls = [ball('9', cornerClampSpot.x, cornerClampSpot.y)];
+    balls[0]!.velocity = { x: -2, y: -2 }; // well above the default capture speed
+    stepPhysics(balls, POOL_TABLE, DEFAULT_PARAMS, SIM_DT);
+    expect(balls[0]!.potted).toBeUndefined();
+  });
+
+  test('a carom (pocketless) table never captures balls, however slow', () => {
+    const balls = [ball('cue', CAROM_TABLE.width / 2 - R, CAROM_TABLE.height / 2 - R)];
+    stepPhysics(balls, CAROM_TABLE, DEFAULT_PARAMS, SIM_DT);
+    expect(balls[0]!.potted).toBeUndefined();
+  });
+
+  test('a potted ball is frozen and excluded from ball–ball collisions', () => {
+    const potted: BallState = { ...ball('9', 0, 0), potted: true };
+    const mover = ball('cue', -0.5, 0);
+    mover.velocity = { x: 2, y: 0 };
+    const balls = [potted, mover];
+    const events: CollisionEvent[] = [];
+    runSteps(balls, Math.round(0.6 / SIM_DT), DEFAULT_PARAMS, events);
+    expect(events.some((e) => e.type === 'ball')).toBe(false);
+    expect(potted.position).toEqual({ x: 0, y: 0 });
+    expect(potted.velocity).toEqual({ x: 0, y: 0 });
+    expect(mover.position.x).toBeGreaterThan(0); // passed straight through, unaffected
   });
 });

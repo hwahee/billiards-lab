@@ -7,18 +7,20 @@
  * advance it at 600 Hz without going through React. React state holds only
  * what the UI renders: the control values, the phase, a low-frequency
  * snapshot of the balls, and a copy of the collision log.
+ *
+ * The active preset (carom or pool — different table, rack and cue ball id)
+ * is itself a piece of state; switching it re-racks the table via that
+ * preset's `createState()`.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
 import {
   advanceGameState,
-  createInitialGameState,
   strikeBall,
   type BilliardsGameState,
   type SimEvent,
 } from '@shared/billiards/game-state';
 import {
-  CAROM_TABLE,
   cloneBalls,
   DEFAULT_PARAMS,
   isAtRest,
@@ -27,11 +29,19 @@ import {
   type PhysicsParams,
 } from '@shared/billiards/physics';
 
-import { CUE_BALL_ID, DEFAULT_SHOT, toStrikeInput, type ShotSettings } from './config';
+import {
+  DEFAULT_SHOT,
+  PRESETS,
+  toStrikeInput,
+  type BilliardsVariant,
+  type ShotSettings,
+} from './config';
 
 type SimPhase = 'idle' | 'running' | 'paused';
 
 export interface BilliardsSim {
+  variant: BilliardsVariant;
+  setVariant: (variant: BilliardsVariant) => void;
   phase: SimPhase;
   shot: ShotSettings;
   setShot: (shot: ShotSettings) => void;
@@ -57,15 +67,17 @@ export interface BilliardsSim {
 }
 
 export function useBilliardsSim(): BilliardsSim {
+  const [variant, setVariantState] = useState<BilliardsVariant>('carom');
   const [phase, setPhaseState] = useState<SimPhase>('idle');
   const [shot, setShot] = useState<ShotSettings>(DEFAULT_SHOT);
   const [physics, setPhysicsState] = useState<PhysicsParams>(DEFAULT_PARAMS);
   const [simSpeed, setSimSpeedState] = useState(1);
-  const [snapshot, setSnapshot] = useState<BallState[]>(() => createInitialGameState().balls);
+  const [snapshot, setSnapshot] = useState<BallState[]>(() => PRESETS.carom.createState().balls);
   const [simTime, setSimTime] = useState(0);
   const [events, setEvents] = useState<SimEvent[]>([]);
 
-  const gameRef = useRef<BilliardsGameState>(createInitialGameState());
+  const variantRef = useRef<BilliardsVariant>('carom');
+  const gameRef = useRef<BilliardsGameState>(PRESETS.carom.createState());
   const phaseRef = useRef<SimPhase>('idle');
   const physicsRef = useRef(physics);
   const simSpeedRef = useRef(simSpeed);
@@ -94,7 +106,8 @@ export function useBilliardsSim(): BilliardsSim {
     (steps: number) => {
       const game = gameRef.current;
       const params = physicsRef.current;
-      const logged = advanceGameState(game, CAROM_TABLE, params, steps);
+      const table = PRESETS[variantRef.current].table;
+      const logged = advanceGameState(game, table, params, steps);
 
       if (logged.length > 0) setEvents([...game.events]);
       if (phaseRef.current !== 'idle' && isAtRest(game.balls, params)) {
@@ -107,17 +120,29 @@ export function useBilliardsSim(): BilliardsSim {
 
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
-    strikeBall(gameRef.current, CUE_BALL_ID, toStrikeInput(shot));
+    strikeBall(gameRef.current, PRESETS[variantRef.current].cueBallId, toStrikeInput(shot));
     setPhase('running');
     updateSnapshot();
   }, [shot, setPhase, updateSnapshot]);
 
   const reset = useCallback(() => {
-    gameRef.current = createInitialGameState();
+    gameRef.current = PRESETS[variantRef.current].createState();
     setEvents([]);
     setPhase('idle');
     updateSnapshot();
   }, [setPhase, updateSnapshot]);
+
+  const setVariant = useCallback(
+    (next: BilliardsVariant) => {
+      variantRef.current = next;
+      gameRef.current = PRESETS[next].createState();
+      setEvents([]);
+      setPhase('idle');
+      setVariantState(next);
+      updateSnapshot();
+    },
+    [setPhase, updateSnapshot],
+  );
 
   const togglePause = useCallback(() => {
     if (phaseRef.current === 'running') {
@@ -142,6 +167,8 @@ export function useBilliardsSim(): BilliardsSim {
   }, [phase, updateSnapshot]);
 
   return {
+    variant,
+    setVariant,
     phase,
     shot,
     setShot,
