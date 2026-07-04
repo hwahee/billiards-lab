@@ -104,8 +104,13 @@ export function BilliardsPage() {
         <p className="muted">{t('billiards.description')}</p>
       </header>
       <div className="billiards-layout">
-        <div className="billiards-canvas" data-testid={TESTID.billiards.canvas}>
-          <BilliardsScene sim={sim} prediction={prediction} />
+        <div>
+          <div className="billiards-canvas" data-testid={TESTID.billiards.canvas}>
+            <BilliardsScene sim={sim} prediction={prediction} />
+          </div>
+          {sim.phase === 'idle' && (
+            <p className="muted billiards-canvas__hint">{t('billiards.dragHint')}</p>
+          )}
         </div>
         <div className="billiards-side">
           <BilliardsControls

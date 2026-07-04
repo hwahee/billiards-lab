@@ -501,6 +501,11 @@ a {
   background: #101820;
 }
 
+.billiards-canvas__hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-sm);
+}
+
 .billiards-side {
   display: flex;
   flex-direction: column;

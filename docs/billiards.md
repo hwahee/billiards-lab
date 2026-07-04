@@ -88,6 +88,18 @@ three.js axes (`(x, y, z, w) → (x, z, −y, w)`).
 Switching the **Game** selector in the Table group re-racks the layout via
 the preset's `createState()` and resets the sim clock/collision log.
 
+## Free ball placement
+
+While idle, any ball can be picked up and dropped anywhere on the table —
+useful for setting up a specific practice shot. `sim.placeBall(ballId, x, y)`
+(`use-billiards.ts`) clamps the target inside the rails and rejects it
+outright if it would overlap another ball (the ball simply stops following
+the cursor at the point of contact). The drag itself (`scene.tsx`) is
+tracked by an invisible plane raised above every ball, so pointer moves keep
+hitting the plane — not whatever ball is currently under the cursor — for
+the whole gesture; `OrbitControls` is disabled for the duration so orbiting
+the camera and dragging a ball never fight over the same pointer.
+
 ## UI variables
 
 - **Shot**: initial speed (m/s), direction (°), lateral speed (m/s,

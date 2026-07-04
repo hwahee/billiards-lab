@@ -56,6 +56,7 @@ export const ko: Record<MessageKey, string> = {
   'billiards.title': '당구 실험실',
   'billiards.description':
     '결정론적 캐롬·포켓볼 시뮬레이션입니다. 타격 벡터·회전축·물리 계수를 정하면 이후의 모든 상태가 그대로 계산되며, 예측 궤적으로 결과를 미리 볼 수 있습니다.',
+  'billiards.dragHint': '공을 드래그해서 테이블 위 원하는 위치에 자유롭게 배치할 수 있어요.',
   'billiards.group.table': '테이블',
   'billiards.group.shot': '타격 변수',
   'billiards.group.physics': '물리 계수',

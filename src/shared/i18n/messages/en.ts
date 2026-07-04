@@ -60,6 +60,7 @@ export const en = {
   'billiards.title': 'Billiards Lab',
   'billiards.description':
     'A deterministic carom or pool simulation: set the strike vector, spin axis and physical coefficients, and the whole evolution is computed exactly — preview it with the predicted paths.',
+  'billiards.dragHint': 'Drag any ball to place it anywhere on the table.',
   'billiards.group.table': 'Table',
   'billiards.group.shot': 'Shot variables',
   'billiards.group.physics': 'Physics coefficients',

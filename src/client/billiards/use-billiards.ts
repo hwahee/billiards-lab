@@ -57,6 +57,12 @@ export interface BilliardsSim {
   reset: () => void;
   togglePause: () => void;
   stepOnce: () => void;
+  /**
+   * Freely repositions a resting ball (table setup / practice mode). Only
+   * takes effect while idle; the target is clamped inside the rails and
+   * rejected outright if it would overlap another ball.
+   */
+  placeBall: (ballId: string, x: number, y: number) => void;
   // Render-loop interface (stable refs; mutated without React re-renders).
   phaseRef: RefObject<SimPhase>;
   simSpeedRef: RefObject<number>;
@@ -144,6 +150,36 @@ export function useBilliardsSim(): BilliardsSim {
     [setPhase, updateSnapshot],
   );
 
+  const placeBall = useCallback(
+    (ballId: string, x: number, y: number) => {
+      if (phaseRef.current !== 'idle') return;
+      const game = gameRef.current;
+      const ball = game.balls.find((b) => b.id === ballId);
+      if (!ball || ball.potted) return;
+
+      const { table } = PRESETS[variantRef.current];
+      const R = physicsRef.current.ballRadius;
+      const xLim = table.width / 2 - R;
+      const yLim = table.height / 2 - R;
+      const cx = Math.min(xLim, Math.max(-xLim, x));
+      const cy = Math.min(yLim, Math.max(-yLim, y));
+
+      const overlaps = game.balls.some(
+        (other) =>
+          other.id !== ballId &&
+          !other.potted &&
+          Math.hypot(cx - other.position.x, cy - other.position.y) < 2 * R,
+      );
+      if (overlaps) return;
+
+      ball.position = { x: cx, y: cy };
+      ball.velocity = { x: 0, y: 0 };
+      ball.spin = { x: 0, y: 0, z: 0 };
+      updateSnapshot();
+    },
+    [updateSnapshot],
+  );
+
   const togglePause = useCallback(() => {
     if (phaseRef.current === 'running') {
       setPhase('paused');
@@ -183,6 +219,7 @@ export function useBilliardsSim(): BilliardsSim {
     reset,
     togglePause,
     stepOnce,
+    placeBall,
     phaseRef,
     simSpeedRef,
     physicsRef,
