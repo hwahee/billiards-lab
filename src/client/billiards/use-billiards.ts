@@ -33,6 +33,7 @@ import {
   DEFAULT_SHOT,
   PRESETS,
   toStrikeInput,
+  trayAnchor,
   type BilliardsVariant,
   type ShotSettings,
 } from './config';
@@ -42,6 +43,8 @@ type SimPhase = 'idle' | 'running' | 'paused';
 export interface BilliardsSim {
   variant: BilliardsVariant;
   setVariant: (variant: BilliardsVariant) => void;
+  /** Bumped on every reset()/setVariant() so per-ball client animation state can be dropped. */
+  gameGeneration: number;
   phase: SimPhase;
   shot: ShotSettings;
   setShot: (shot: ShotSettings) => void;
@@ -59,10 +62,15 @@ export interface BilliardsSim {
   stepOnce: () => void;
   /**
    * Freely repositions a resting ball (table setup / practice mode). Only
-   * takes effect while idle; the target is clamped inside the rails and
-   * rejected outright if it would overlap another ball.
+   * takes effect while idle. A potted ball dragged back onto the felt
+   * rejoins play (subject to the usual bounds/overlap rules below); dragged
+   * while still off the felt, it just moves within the holding tray. An
+   * active ball's target is clamped inside the rails and rejected outright
+   * if it would overlap another ball.
    */
   placeBall: (ballId: string, x: number, y: number) => void;
+  /** Moves a just-captured ball to the pocketed-ball holding tray, at rest. */
+  settleIntoTray: (ballId: string) => void;
   // Render-loop interface (stable refs; mutated without React re-renders).
   phaseRef: RefObject<SimPhase>;
   simSpeedRef: RefObject<number>;
@@ -74,6 +82,7 @@ export interface BilliardsSim {
 
 export function useBilliardsSim(): BilliardsSim {
   const [variant, setVariantState] = useState<BilliardsVariant>('carom');
+  const [gameGeneration, setGameGeneration] = useState(0);
   const [phase, setPhaseState] = useState<SimPhase>('idle');
   const [shot, setShot] = useState<ShotSettings>(DEFAULT_SHOT);
   const [physics, setPhysicsState] = useState<PhysicsParams>(DEFAULT_PARAMS);
@@ -126,7 +135,11 @@ export function useBilliardsSim(): BilliardsSim {
 
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
-    strikeBall(gameRef.current, PRESETS[variantRef.current].cueBallId, toStrikeInput(shot));
+    const cueBall = gameRef.current.balls.find(
+      (b) => b.id === PRESETS[variantRef.current].cueBallId,
+    );
+    if (!cueBall || cueBall.potted) return; // must be dragged back onto the table first
+    strikeBall(gameRef.current, cueBall.id, toStrikeInput(shot));
     setPhase('running');
     updateSnapshot();
   }, [shot, setPhase, updateSnapshot]);
@@ -135,6 +148,7 @@ export function useBilliardsSim(): BilliardsSim {
     gameRef.current = PRESETS[variantRef.current].createState();
     setEvents([]);
     setPhase('idle');
+    setGameGeneration((g) => g + 1);
     updateSnapshot();
   }, [setPhase, updateSnapshot]);
 
@@ -144,6 +158,7 @@ export function useBilliardsSim(): BilliardsSim {
       gameRef.current = PRESETS[next].createState();
       setEvents([]);
       setPhase('idle');
+      setGameGeneration((g) => g + 1);
       setVariantState(next);
       updateSnapshot();
     },
@@ -155,15 +170,23 @@ export function useBilliardsSim(): BilliardsSim {
       if (phaseRef.current !== 'idle') return;
       const game = gameRef.current;
       const ball = game.balls.find((b) => b.id === ballId);
-      if (!ball || ball.potted) return;
+      if (!ball) return;
 
       const { table } = PRESETS[variantRef.current];
       const R = physicsRef.current.ballRadius;
       const xLim = table.width / 2 - R;
       const yLim = table.height / 2 - R;
+      const onFelt = Math.abs(x) <= xLim && Math.abs(y) <= yLim;
+
+      if (ball.potted && !onFelt) {
+        // Still off the table: free rearranging within the holding tray.
+        ball.position = { x, y };
+        updateSnapshot();
+        return;
+      }
+
       const cx = Math.min(xLim, Math.max(-xLim, x));
       const cy = Math.min(yLim, Math.max(-yLim, y));
-
       const overlaps = game.balls.some(
         (other) =>
           other.id !== ballId &&
@@ -175,6 +198,18 @@ export function useBilliardsSim(): BilliardsSim {
       ball.position = { x: cx, y: cy };
       ball.velocity = { x: 0, y: 0 };
       ball.spin = { x: 0, y: 0, z: 0 };
+      ball.potted = false; // dragged back onto the felt: rejoins play
+      updateSnapshot();
+    },
+    [updateSnapshot],
+  );
+
+  const settleIntoTray = useCallback(
+    (ballId: string) => {
+      const game = gameRef.current;
+      const ball = game.balls.find((b) => b.id === ballId);
+      if (!ball) return;
+      ball.position = trayAnchor(PRESETS[variantRef.current].table);
       updateSnapshot();
     },
     [updateSnapshot],
@@ -205,6 +240,7 @@ export function useBilliardsSim(): BilliardsSim {
   return {
     variant,
     setVariant,
+    gameGeneration,
     phase,
     shot,
     setShot,
@@ -220,6 +256,7 @@ export function useBilliardsSim(): BilliardsSim {
     togglePause,
     stepOnce,
     placeBall,
+    settleIntoTray,
     phaseRef,
     simSpeedRef,
     physicsRef,

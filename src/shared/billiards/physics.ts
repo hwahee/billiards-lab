@@ -437,11 +437,10 @@ function checkPockets(
     ball.potted = true;
     ball.velocity = { x: 0, y: 0 };
     ball.spin = { x: 0, y: 0, z: 0 };
-    // Teleport just outside the rail, radially past the pocket mouth.
-    ball.position = {
-      x: pocket.x + Math.sign(pocket.x) * 0.2,
-      y: pocket.y + Math.sign(pocket.y) * 0.2,
-    };
+    // Rests right at the pocket mouth; a client renderer is free to animate
+    // it disappearing from here and reappearing elsewhere (it plays no
+    // further part in the physics either way).
+    ball.position = { x: pocket.x, y: pocket.y };
     events?.push({ type: 'pocket', ballId: ball.id });
     return;
   }

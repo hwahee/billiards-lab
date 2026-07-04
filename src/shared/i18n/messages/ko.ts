@@ -81,6 +81,7 @@ export const ko: Record<MessageKey, string> = {
   'billiards.pocketCaptureSpeed': '포켓 흡수 속도',
   'billiards.simSpeed': '재생 속도',
   'billiards.strike': '치기',
+  'billiards.cuePottedHint': '큐볼이 보관함에 있어요 — 테이블 안으로 드래그해야 칠 수 있습니다.',
   'billiards.pause': '일시정지',
   'billiards.resume': '계속',
   'billiards.step': '1/60초 진행',

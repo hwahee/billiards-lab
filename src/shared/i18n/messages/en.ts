@@ -85,6 +85,7 @@ export const en = {
   'billiards.pocketCaptureSpeed': 'Pocket capture speed',
   'billiards.simSpeed': 'Playback speed',
   'billiards.strike': 'Strike',
+  'billiards.cuePottedHint': 'The cue ball is in the tray — drag it back onto the table to strike.',
   'billiards.pause': 'Pause',
   'billiards.resume': 'Resume',
   'billiards.step': 'Step 1/60 s',

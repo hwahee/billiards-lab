@@ -311,8 +311,8 @@ describe('pockets', () => {
     expect(events).toContainEqual({ type: 'pocket', ballId: '9' });
     expect(balls[0]!.potted).toBe(true);
     expect(balls[0]!.velocity).toEqual({ x: 0, y: 0 });
-    // Teleported out past the rail, not left sitting on the table.
-    expect(Math.abs(balls[0]!.position.x)).toBeGreaterThan(POOL_TABLE.width / 2);
+    // Rests right at the pocket mouth (a renderer is free to animate it away from here).
+    expect(balls[0]!.position).toEqual({ x: corner.x, y: corner.y });
   });
 
   test('a side pocket (middle of a long rail) also captures a slow ball', () => {

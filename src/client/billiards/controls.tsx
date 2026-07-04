@@ -123,6 +123,8 @@ export function BilliardsControls({
   const { phase, shot, setShot, physics, setPhysics } = sim;
   const hasPockets = Boolean(PRESETS[sim.variant].table.pockets);
   const physicsSliders = hasPockets ? [...PHYSICS_SLIDERS, POCKET_SLIDER] : PHYSICS_SLIDERS;
+  const cueBallId = PRESETS[sim.variant].cueBallId;
+  const cueIsPotted = sim.snapshot.find((ball) => ball.id === cueBallId)?.potted ?? false;
 
   return (
     <div className="billiards-panel">
@@ -206,7 +208,7 @@ export function BilliardsControls({
           <Button
             testId={TESTID.billiards.strike}
             onClick={sim.strikeCue}
-            disabled={phase !== 'idle'}
+            disabled={phase !== 'idle' || cueIsPotted}
           >
             {t('billiards.strike')}
           </Button>
@@ -230,6 +232,9 @@ export function BilliardsControls({
             {t('billiards.reset')}
           </Button>
         </div>
+        {phase === 'idle' && cueIsPotted && (
+          <p className="muted billiards-cue-potted-hint">{t('billiards.cuePottedHint')}</p>
+        )}
       </section>
 
       <section className="billiards-group">

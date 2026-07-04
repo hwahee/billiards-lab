@@ -69,11 +69,13 @@ three.js axes (`(x, y, z, w) → (x, z, −y, w)`).
   the 4 corners plus the middle of each long rail. Each step, a ball not yet
   potted is checked against every pocket; if its centre lies inside the
   mouth's radius and its speed is at or below `pocketCaptureSpeed`, it is
-  flagged `potted`, its velocity/spin are zeroed, and it is teleported just
-  outside the rail. Potted balls are frozen: skipped entirely by friction,
-  cushion and ball–ball collision from then on. A ball moving faster than
-  `pocketCaptureSpeed` passes straight over the mouth instead of dropping —
-  the deliberate stand-in for modelling real pocket-jaw geometry.
+  flagged `potted`, its velocity/spin are zeroed, and it rests at the
+  pocket's own coordinates. Potted balls are frozen: skipped entirely by
+  friction, cushion and ball–ball collision from then on. A ball moving
+  faster than `pocketCaptureSpeed` passes straight over the mouth instead of
+  dropping — the deliberate stand-in for modelling real pocket-jaw geometry.
+  Where the ball ends up visually from there (shrinking away, reappearing in
+  a tray) is a client-only concern — see "Pocketed-ball tray" below.
 
 ## Presets
 
@@ -87,6 +89,27 @@ three.js axes (`(x, y, z, w) → (x, z, −y, w)`).
 
 Switching the **Game** selector in the Table group re-racks the layout via
 the preset's `createState()` and resets the sim clock/collision log.
+
+## Pocketed-ball tray
+
+A captured ball doesn't just vanish: `scene.tsx`'s `BallMeshes` runs a
+client-only, wall-clock-driven animation on top of the physics state (which
+already parked the ball at the pocket, inert) — it shrinks in place at the
+pocket mouth (`POT_ANIM_SHRINK`), disappears for a beat (`POT_ANIM_HIDDEN`),
+then calls `sim.settleIntoTray(ballId)` to move it to one fixed spot just
+outside a short (vertical) edge of the table — on the wooden rail itself,
+marked with a faint ring — and grows back in (`POT_ANIM_GROW`). None of this
+is simulated physics; it's purely presentational, tracked per ball in a
+small phase state machine (`shrinking → hidden → growing`) so a mid-flight
+ball is neither draggable nor rendered from stale physics state.
+
+Once settled, a tray ball can be dragged like any other (`sim.placeBall`):
+moved within the tray freely, or dropped back onto the felt — which clears
+`potted` and lets it rejoin play, subject to the same bounds/overlap rules
+as any other placement. `strikeCue()` refuses to fire while the cue ball is
+potted, and the controls panel disables the Strike button and shows a hint
+for the same reason: a potted cue ball must be dragged back onto the table
+before it can be struck again.
 
 ## Free ball placement
 

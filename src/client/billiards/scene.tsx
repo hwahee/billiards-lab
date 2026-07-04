@@ -14,6 +14,11 @@
  * by an invisible plane raised above every ball, so pointer moves keep
  * hitting the plane (not whatever ball is currently under the cursor) for
  * the whole gesture. `sim.placeBall` does the bounds/overlap clamping.
+ *
+ * A captured ball doesn't just vanish: it shrinks in place at the pocket
+ * mouth, disappears for a beat, then regrows at the holding tray — a
+ * client-only animation (see POT_ANIM_* below) layered on top of the
+ * physics state, which already teleported the ball there instantly.
  */
 import { Line, OrbitControls, useCursor } from '@react-three/drei';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
@@ -27,7 +32,7 @@ import {
   type TableConfig,
 } from '@shared/billiards/physics';
 
-import { ballSpec, PRESETS, type ShotSettings } from './config';
+import { ballSpec, isOnFelt, PRESETS, trayAnchor, type ShotSettings } from './config';
 import { makeBallTexture, makeNumberedBallTexture } from './textures';
 import type { BilliardsSim } from './use-billiards';
 
@@ -36,6 +41,8 @@ const CUSHION_HEIGHT = 0.045;
 const CUSHION_THICKNESS = 0.06;
 const FRAME_THICKNESS = 0.11;
 const FRAME_HEIGHT = 0.09;
+/** Top surface of the wooden frame — where tray-held balls rest (higher than the cloth). */
+const TRAY_SURFACE_Y = FRAME_HEIGHT - 0.03;
 /** Trajectory lines float just above the cloth. */
 const PATH_LIFT = 0.004;
 /** Pocket mouth markers float just above the cloth, below the ball centres. */
@@ -45,6 +52,22 @@ const CLOTH_COLOR = '#22754b';
 const CUSHION_COLOR = '#1a5c3a';
 const FRAME_COLOR = '#5a3a24';
 const POCKET_COLOR = '#0a0a0a';
+
+/** Seconds spent shrinking into the pocket mouth before vanishing. */
+const POT_ANIM_SHRINK = 0.35;
+/** Seconds spent gone, out of sight, before reappearing at the tray. */
+const POT_ANIM_HIDDEN = 0.35;
+/** Seconds spent growing back to full size once at the tray. */
+const POT_ANIM_GROW = 0.35;
+
+type PotAnimPhase = 'shrinking' | 'hidden' | 'growing';
+
+interface PotAnim {
+  phase: PotAnimPhase;
+  elapsed: number;
+  /** Where the ball was captured — held fixed for the whole shrink phase. */
+  shrinkPos: { x: number; y: number };
+}
 
 function Table({ table }: { table: TableConfig }) {
   const { width, height, pockets } = table;
@@ -122,6 +145,16 @@ function Table({ table }: { table: TableConfig }) {
           <meshStandardMaterial color={POCKET_COLOR} roughness={1} />
         </mesh>
       ))}
+      {/* Holding tray marker — where potted balls reappear, ready to drag back in. */}
+      {pockets && (
+        <mesh
+          position={[trayAnchor(table).x, POCKET_LIFT, -trayAnchor(table).y]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <ringGeometry args={[BALL_RADIUS * 1.3, BALL_RADIUS * 1.9, 32]} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.35} />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -143,6 +176,17 @@ function BallMeshes({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   useCursor(draggingId !== null, 'grabbing');
   useCursor(draggingId === null && hoveredId !== null, 'grab');
+
+  // Per-ball pocket-capture animation state (shrink → hidden → grow); a ball
+  // absent from both maps and not `potted` is just in normal play, and one
+  // absent from potAnimRef but present in settledRef sits at rest in the
+  // tray, fully grown. Cleared whenever the game itself is replaced.
+  const potAnimRef = useRef(new Map<string, PotAnim>());
+  const settledRef = useRef(new Set<string>());
+  useEffect(() => {
+    potAnimRef.current.clear();
+    settledRef.current.clear();
+  }, [sim.gameGeneration]);
 
   const textures = useMemo(
     () =>
@@ -176,14 +220,67 @@ function BallMeshes({
         sim.advance(steps);
       }
     }
+    const table = preset.table;
     for (const ball of sim.gameRef.current.balls) {
       const mesh = meshRefs.current.get(ball.id);
       if (!mesh) continue;
-      mesh.visible = !ball.potted;
-      if (ball.potted) continue;
-      mesh.position.set(ball.position.x, BALL_RADIUS, -ball.position.y);
-      const q = ball.orientation;
-      mesh.quaternion.set(q.x, q.z, -q.y, q.w);
+
+      if (!ball.potted) {
+        settledRef.current.delete(ball.id);
+        potAnimRef.current.delete(ball.id);
+        mesh.visible = true;
+        mesh.scale.setScalar(1);
+        mesh.position.set(ball.position.x, BALL_RADIUS, -ball.position.y);
+        const q = ball.orientation;
+        mesh.quaternion.set(q.x, q.z, -q.y, q.w);
+        continue;
+      }
+
+      let anim = potAnimRef.current.get(ball.id);
+      if (!anim && !settledRef.current.has(ball.id)) {
+        // Newly captured this frame — start the shrink right where it fell.
+        anim = { phase: 'shrinking', elapsed: 0, shrinkPos: { ...ball.position } };
+        potAnimRef.current.set(ball.id, anim);
+      }
+
+      if (!anim) {
+        // Already settled: at rest in the tray (or wherever it was dragged).
+        const onFelt = isOnFelt(table, ball.position.x, ball.position.y);
+        mesh.visible = true;
+        mesh.scale.setScalar(1);
+        const y = onFelt ? BALL_RADIUS : TRAY_SURFACE_Y + BALL_RADIUS;
+        mesh.position.set(ball.position.x, y, -ball.position.y);
+        continue;
+      }
+
+      anim.elapsed += delta;
+      if (anim.phase === 'shrinking') {
+        const t = Math.min(1, anim.elapsed / POT_ANIM_SHRINK);
+        const scale = 1 - t;
+        mesh.visible = scale > 0;
+        mesh.scale.setScalar(scale);
+        mesh.position.set(anim.shrinkPos.x, BALL_RADIUS * scale, -anim.shrinkPos.y);
+        if (t >= 1) {
+          anim.phase = 'hidden';
+          anim.elapsed = 0;
+        }
+      } else if (anim.phase === 'hidden') {
+        mesh.visible = false;
+        if (anim.elapsed >= POT_ANIM_HIDDEN) {
+          sim.settleIntoTray(ball.id);
+          anim.phase = 'growing';
+          anim.elapsed = 0;
+        }
+      } else {
+        const t = Math.min(1, anim.elapsed / POT_ANIM_GROW);
+        mesh.visible = true;
+        mesh.scale.setScalar(t);
+        mesh.position.set(ball.position.x, TRAY_SURFACE_Y + BALL_RADIUS * t, -ball.position.y);
+        if (t >= 1) {
+          potAnimRef.current.delete(ball.id);
+          settledRef.current.add(ball.id);
+        }
+      }
     }
   });
 
@@ -200,7 +297,8 @@ function BallMeshes({
           onPointerDown={(e: ThreeEvent<PointerEvent>) => {
             if (sim.phase !== 'idle') return;
             const ball = sim.gameRef.current.balls.find((b) => b.id === spec.id);
-            if (!ball || ball.potted) return;
+            if (!ball) return;
+            if (potAnimRef.current.has(spec.id)) return; // mid pocket animation, not grabbable yet
             e.stopPropagation();
             onDragStart(spec.id);
           }}

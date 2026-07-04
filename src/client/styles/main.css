@@ -562,6 +562,11 @@ a {
   margin-top: var(--space-2);
 }
 
+.billiards-cue-potted-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-sm);
+}
+
 .billiards-readout__time {
   margin: 0 0 var(--space-2);
   font-size: var(--font-size-sm);

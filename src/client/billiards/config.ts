@@ -13,6 +13,7 @@ import {
 } from '@shared/billiards/game-state';
 import {
   CAROM_TABLE,
+  DEFAULT_PARAMS,
   POOL_TABLE,
   type StrikeInput,
   type TableConfig,
@@ -99,6 +100,28 @@ export interface BilliardsPreset {
   ballSpecs: readonly BallSpec[];
   labelKey: MessageKey;
   createState: () => BilliardsGameState;
+}
+
+/**
+ * How far outside the short (vertical) rail the pocketed-ball holding tray
+ * sits (m) — lands on the wooden rail itself, between the cushion and the
+ * frame's outer edge (see CUSHION_THICKNESS/FRAME_THICKNESS in scene.tsx).
+ */
+const TRAY_MARGIN = 0.115;
+
+/**
+ * Where a captured ball reappears, at rest, once its pocket animation
+ * finishes — one fixed spot just outside a short edge of the table, ready
+ * to be dragged back onto the felt. Only meaningful for tables with pockets.
+ */
+export function trayAnchor(table: TableConfig): { x: number; y: number } {
+  return { x: table.width / 2 + TRAY_MARGIN, y: 0 };
+}
+
+/** Whether (x, y) lies within the legal playing bounds of `table` (ball-radius inset). */
+export function isOnFelt(table: TableConfig, x: number, y: number): boolean {
+  const R = DEFAULT_PARAMS.ballRadius;
+  return Math.abs(x) <= table.width / 2 - R && Math.abs(y) <= table.height / 2 - R;
 }
 
 export const PRESETS: Record<BilliardsVariant, BilliardsPreset> = {
