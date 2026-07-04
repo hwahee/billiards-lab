@@ -1,46 +1,35 @@
 /**
  * State container for the billiards page.
  *
- * The physics state (balls — each carrying its orientation quaternion — and
- * the sim clock) lives in mutable refs so the render loop can advance it at
- * 600 Hz without going through React. React state holds only what the UI
- * renders: the control values, the phase, a low-frequency snapshot of the
- * balls, and the collision log.
+ * The whole game state (balls with orientation quaternions, sim clock,
+ * collision log) is one serializable BilliardsGameState from
+ * @shared/billiards/game-state, held in a mutable ref so the render loop can
+ * advance it at 600 Hz without going through React. React state holds only
+ * what the UI renders: the control values, the phase, a low-frequency
+ * snapshot of the balls, and a copy of the collision log.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
+import {
+  advanceGameState,
+  createInitialGameState,
+  strikeBall,
+  type BilliardsGameState,
+  type SimEvent,
+} from '@shared/billiards/game-state';
 import {
   CAROM_TABLE,
   cloneBalls,
   DEFAULT_PARAMS,
   isAtRest,
   SIM_DT,
-  stepPhysics,
-  strike,
   type BallState,
-  type CollisionEvent,
   type PhysicsParams,
 } from '@shared/billiards/physics';
 
-import {
-  createInitialBalls,
-  CUE_BALL_ID,
-  DEFAULT_SHOT,
-  toStrikeInput,
-  type ShotSettings,
-} from './config';
+import { CUE_BALL_ID, DEFAULT_SHOT, toStrikeInput, type ShotSettings } from './config';
 
 type SimPhase = 'idle' | 'running' | 'paused';
-
-export interface SimEvent {
-  /** Simulation clock at the moment of the collision (s). */
-  time: number;
-  event: CollisionEvent;
-}
-
-const MAX_LOGGED_EVENTS = 24;
-/** Collisions with the same signature within this window are one contact. */
-const EVENT_DEDUPE_WINDOW = 0.08;
 
 export interface BilliardsSim {
   phase: SimPhase;
@@ -62,7 +51,7 @@ export interface BilliardsSim {
   phaseRef: RefObject<SimPhase>;
   simSpeedRef: RefObject<number>;
   physicsRef: RefObject<PhysicsParams>;
-  ballsRef: RefObject<BallState[]>;
+  gameRef: RefObject<BilliardsGameState>;
   /** Advances the physics by `steps` fixed SIM_DT steps. */
   advance: (steps: number) => void;
 }
@@ -72,16 +61,14 @@ export function useBilliardsSim(): BilliardsSim {
   const [shot, setShot] = useState<ShotSettings>(DEFAULT_SHOT);
   const [physics, setPhysicsState] = useState<PhysicsParams>(DEFAULT_PARAMS);
   const [simSpeed, setSimSpeedState] = useState(1);
-  const [snapshot, setSnapshot] = useState<BallState[]>(createInitialBalls);
+  const [snapshot, setSnapshot] = useState<BallState[]>(() => createInitialGameState().balls);
   const [simTime, setSimTime] = useState(0);
   const [events, setEvents] = useState<SimEvent[]>([]);
 
-  const ballsRef = useRef<BallState[]>(createInitialBalls());
-  const simTimeRef = useRef(0);
+  const gameRef = useRef<BilliardsGameState>(createInitialGameState());
   const phaseRef = useRef<SimPhase>('idle');
   const physicsRef = useRef(physics);
   const simSpeedRef = useRef(simSpeed);
-  const lastEventRef = useRef<{ signature: string; time: number } | null>(null);
 
   const setPhase = useCallback((next: SimPhase) => {
     phaseRef.current = next;
@@ -99,44 +86,18 @@ export function useBilliardsSim(): BilliardsSim {
   }, []);
 
   const updateSnapshot = useCallback(() => {
-    setSnapshot(cloneBalls(ballsRef.current));
-    setSimTime(simTimeRef.current);
+    setSnapshot(cloneBalls(gameRef.current.balls));
+    setSimTime(gameRef.current.simTime);
   }, []);
 
   const advance = useCallback(
     (steps: number) => {
-      const balls = ballsRef.current;
+      const game = gameRef.current;
       const params = physicsRef.current;
-      const collisions: CollisionEvent[] = [];
-      const logged: SimEvent[] = [];
+      const logged = advanceGameState(game, CAROM_TABLE, params, steps);
 
-      for (let i = 0; i < steps; i += 1) {
-        collisions.length = 0;
-        stepPhysics(balls, CAROM_TABLE, params, SIM_DT, collisions);
-        simTimeRef.current += SIM_DT;
-
-        for (const event of collisions) {
-          const signature =
-            event.type === 'ball'
-              ? `ball:${event.ballId}:${event.otherId}`
-              : `cushion:${event.ballId}`;
-          const last = lastEventRef.current;
-          if (
-            last?.signature === signature &&
-            simTimeRef.current - last.time < EVENT_DEDUPE_WINDOW
-          ) {
-            last.time = simTimeRef.current;
-            continue;
-          }
-          lastEventRef.current = { signature, time: simTimeRef.current };
-          logged.push({ time: simTimeRef.current, event });
-        }
-      }
-
-      if (logged.length > 0) {
-        setEvents((prev) => [...prev, ...logged].slice(-MAX_LOGGED_EVENTS));
-      }
-      if (phaseRef.current !== 'idle' && isAtRest(balls, params)) {
+      if (logged.length > 0) setEvents([...game.events]);
+      if (phaseRef.current !== 'idle' && isAtRest(game.balls, params)) {
         setPhase('idle');
         updateSnapshot();
       }
@@ -146,17 +107,13 @@ export function useBilliardsSim(): BilliardsSim {
 
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
-    const cue = ballsRef.current.find((b) => b.id === CUE_BALL_ID);
-    if (!cue) return;
-    strike(cue, toStrikeInput(shot));
+    strikeBall(gameRef.current, CUE_BALL_ID, toStrikeInput(shot));
     setPhase('running');
     updateSnapshot();
   }, [shot, setPhase, updateSnapshot]);
 
   const reset = useCallback(() => {
-    ballsRef.current = createInitialBalls();
-    simTimeRef.current = 0;
-    lastEventRef.current = null;
+    gameRef.current = createInitialGameState();
     setEvents([]);
     setPhase('idle');
     updateSnapshot();
@@ -202,7 +159,7 @@ export function useBilliardsSim(): BilliardsSim {
     phaseRef,
     simSpeedRef,
     physicsRef,
-    ballsRef,
+    gameRef,
     advance,
   };
 }

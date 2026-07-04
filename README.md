@@ -54,15 +54,16 @@ DB_DRIVER=memory bun run dev   # 외부 서비스 없이 바로 실행 → http:
 
 ## 코드 배치
 
-| 구성 요소                               | 경로                                    |
-| --------------------------------------- | --------------------------------------- |
-| 물리 엔진 (순수 TS, 렌더링 의존성 없음) | `src/shared/billiards/physics.ts`       |
-| 엔진 테스트 (결정론, 스핀, 쿠션, 충돌)  | `src/shared/billiards/physics.test.ts`  |
-| 시나리오 (공 배치, 기본 타격값)         | `src/client/billiards/config.ts`        |
-| 시뮬레이션 상태 컨테이너 (refs + React) | `src/client/billiards/use-billiards.ts` |
-| 3D 씬 (테이블, 공, 예측 경로)           | `src/client/billiards/scene.tsx`        |
-| 컨트롤 패널                             | `src/client/billiards/controls.tsx`     |
-| 페이지                                  | `src/client/pages/billiards-page.tsx`   |
+| 구성 요소                                | 경로                                    |
+| ---------------------------------------- | --------------------------------------- |
+| 물리 엔진 (순수 TS, 렌더링 의존성 없음)  | `src/shared/billiards/physics.ts`       |
+| 엔진 테스트 (결정론, 스핀, 쿠션, 충돌)   | `src/shared/billiards/physics.test.ts`  |
+| 직렬화 가능한 게임 상태 (배치·타격·진행) | `src/shared/billiards/game-state.ts`    |
+| 표시 설정 (공 색상, 기본 타격값)         | `src/client/billiards/config.ts`        |
+| 시뮬레이션 상태 컨테이너 (refs + React)  | `src/client/billiards/use-billiards.ts` |
+| 3D 씬 (테이블, 공, 예측 경로)            | `src/client/billiards/scene.tsx`        |
+| 컨트롤 패널                              | `src/client/billiards/controls.tsx`     |
+| 페이지                                   | `src/client/pages/billiards-page.tsx`   |
 
 ## 물리 모델 (요약)
 

@@ -12,15 +12,17 @@ played back in 3D. Because the engine is a fixed-timestep pure function, the
 
 ## Where things live
 
-| Piece                                             | Path                                    |
-| ------------------------------------------------- | --------------------------------------- |
-| Physics engine (pure TS, no rendering deps)       | `src/shared/billiards/physics.ts`       |
-| Engine tests (determinism, draw/follow, cushions) | `src/shared/billiards/physics.test.ts`  |
-| Scenario (balls, layout, default shot)            | `src/client/billiards/config.ts`        |
-| Sim state container (refs + React state)          | `src/client/billiards/use-billiards.ts` |
-| 3D scene (table, balls, prediction lines)         | `src/client/billiards/scene.tsx`        |
-| Control panel                                     | `src/client/billiards/controls.tsx`     |
-| Page                                              | `src/client/pages/billiards-page.tsx`   |
+| Piece                                             | Path                                      |
+| ------------------------------------------------- | ----------------------------------------- |
+| Physics engine (pure TS, no rendering deps)       | `src/shared/billiards/physics.ts`         |
+| Engine tests (determinism, draw/follow, cushions) | `src/shared/billiards/physics.test.ts`    |
+| Serializable game state (layout, strike, advance) | `src/shared/billiards/game-state.ts`      |
+| Game-state tests (JSON round-trip, collision log) | `src/shared/billiards/game-state.test.ts` |
+| Presentation config (colours, default shot)       | `src/client/billiards/config.ts`          |
+| Sim state container (refs + React state)          | `src/client/billiards/use-billiards.ts`   |
+| 3D scene (table, balls, prediction lines)         | `src/client/billiards/scene.tsx`          |
+| Control panel                                     | `src/client/billiards/controls.tsx`       |
+| Page                                              | `src/client/pages/billiards-page.tsx`     |
 
 ## Physics model
 
