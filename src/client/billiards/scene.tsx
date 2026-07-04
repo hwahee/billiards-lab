@@ -32,7 +32,7 @@ import {
   type TableConfig,
 } from '@shared/billiards/physics';
 
-import { ballSpec, isOnFelt, PRESETS, trayAnchor, type ShotSettings } from './config';
+import { ballSpec, isOnFelt, PRESETS, trayFootprint, type ShotSettings } from './config';
 import { makeBallTexture, makeNumberedBallTexture } from './textures';
 import type { BilliardsSim } from './use-billiards';
 
@@ -73,6 +73,7 @@ function Table({ table }: { table: TableConfig }) {
   const { width, height, pockets } = table;
   const innerW = width + 2 * CUSHION_THICKNESS;
   const innerH = height + 2 * CUSHION_THICKNESS;
+  const tray = pockets ? trayFootprint(table) : null;
   return (
     <group>
       {/* Cloth bed; playing surface is y = 0. */}
@@ -145,15 +146,23 @@ function Table({ table }: { table: TableConfig }) {
           <meshStandardMaterial color={POCKET_COLOR} roughness={1} />
         </mesh>
       ))}
-      {/* Holding tray marker — where potted balls reappear, ready to drag back in. */}
-      {pockets && (
-        <mesh
-          position={[trayAnchor(table).x, POCKET_LIFT, -trayAnchor(table).y]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <ringGeometry args={[BALL_RADIUS * 1.3, BALL_RADIUS * 1.9, 32]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.35} />
-        </mesh>
+      {/* Pocketed-ball holding tray — a small shelf extending from the rail,
+          its top flush with the frame (see TRAY_SURFACE_Y), sized to fit the
+          whole slot grid so simultaneously potted balls don't overlap. */}
+      {tray && (
+        <group>
+          <mesh castShadow receiveShadow position={[tray.x, FRAME_HEIGHT / 2 - 0.03, -tray.y]}>
+            <boxGeometry args={[tray.width, FRAME_HEIGHT, tray.height]} />
+            <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+          </mesh>
+          <mesh
+            position={[tray.x, TRAY_SURFACE_Y + 0.001, -tray.y]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <planeGeometry args={[tray.width, tray.height]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.12} />
+          </mesh>
+        </group>
       )}
     </group>
   );

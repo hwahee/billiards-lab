@@ -31,9 +31,9 @@ import {
 
 import {
   DEFAULT_SHOT,
+  nextFreeTraySlot,
   PRESETS,
   toStrikeInput,
-  trayAnchor,
   type BilliardsVariant,
   type ShotSettings,
 } from './config';
@@ -209,7 +209,13 @@ export function useBilliardsSim(): BilliardsSim {
       const game = gameRef.current;
       const ball = game.balls.find((b) => b.id === ballId);
       if (!ball) return;
-      ball.position = trayAnchor(PRESETS[variantRef.current].table);
+      const table = PRESETS[variantRef.current].table;
+      // Only balls already resting in the tray occupy a slot — one still
+      // mid-shrink at its pocket hasn't been assigned one yet.
+      const occupied = game.balls
+        .filter((b) => b.id !== ballId && b.potted && b.position.x > table.width / 2)
+        .map((b) => b.position);
+      ball.position = nextFreeTraySlot(table, occupied);
       updateSnapshot();
     },
     [updateSnapshot],

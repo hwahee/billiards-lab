@@ -103,19 +103,58 @@ export interface BilliardsPreset {
 }
 
 /**
- * How far outside the short (vertical) rail the pocketed-ball holding tray
- * sits (m) — lands on the wooden rail itself, between the cushion and the
- * frame's outer edge (see CUSHION_THICKNESS/FRAME_THICKNESS in scene.tsx).
+ * Pocketed-ball holding tray: one dedicated area just outside a short
+ * (vertical) edge of the table, laid out as a grid so simultaneously
+ * pocketed balls sit spaced apart instead of piling on top of each other.
+ * Only meaningful for tables with pockets.
  */
-const TRAY_MARGIN = 0.115;
+const TRAY_MARGIN = 0.06;
+const TRAY_ROWS = 2;
+const TRAY_COLS = 8;
+const TRAY_SLOT_GAP = DEFAULT_PARAMS.ballRadius * 2.4;
+const TRAY_SLOT_COUNT = TRAY_ROWS * TRAY_COLS;
+
+/** The (row, col) grid slot's centre, `index` counting row-major from 0. */
+function traySlotPosition(table: TableConfig, index: number): { x: number; y: number } {
+  const row = Math.floor(index / TRAY_COLS);
+  const col = index % TRAY_COLS;
+  return {
+    x: table.width / 2 + TRAY_MARGIN + (row + 0.5) * TRAY_SLOT_GAP,
+    y: (col - (TRAY_COLS - 1) / 2) * TRAY_SLOT_GAP,
+  };
+}
 
 /**
- * Where a captured ball reappears, at rest, once its pocket animation
- * finishes — one fixed spot just outside a short edge of the table, ready
- * to be dragged back onto the felt. Only meaningful for tables with pockets.
+ * The first tray slot not already sat in by one of `occupied`'s positions
+ * (other potted balls already resting in the tray). Falls back to extending
+ * the grid one more row if every slot is somehow taken.
  */
-export function trayAnchor(table: TableConfig): { x: number; y: number } {
-  return { x: table.width / 2 + TRAY_MARGIN, y: 0 };
+export function nextFreeTraySlot(
+  table: TableConfig,
+  occupied: readonly { x: number; y: number }[],
+): { x: number; y: number } {
+  const R = DEFAULT_PARAMS.ballRadius;
+  for (let i = 0; i < TRAY_SLOT_COUNT; i += 1) {
+    const slot = traySlotPosition(table, i);
+    if (!occupied.some((p) => Math.hypot(p.x - slot.x, p.y - slot.y) < R * 1.5)) return slot;
+  }
+  return traySlotPosition(table, occupied.length);
+}
+
+/** Rectangular footprint of the whole tray grid (table coordinates), for drawing its shelf. */
+export function trayFootprint(table: TableConfig): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const R = DEFAULT_PARAMS.ballRadius;
+  return {
+    x: table.width / 2 + TRAY_MARGIN + (TRAY_ROWS * TRAY_SLOT_GAP) / 2,
+    y: 0,
+    width: TRAY_ROWS * TRAY_SLOT_GAP + R,
+    height: TRAY_COLS * TRAY_SLOT_GAP + R,
+  };
 }
 
 /** Whether (x, y) lies within the legal playing bounds of `table` (ball-radius inset). */

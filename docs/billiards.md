@@ -96,12 +96,20 @@ A captured ball doesn't just vanish: `scene.tsx`'s `BallMeshes` runs a
 client-only, wall-clock-driven animation on top of the physics state (which
 already parked the ball at the pocket, inert) — it shrinks in place at the
 pocket mouth (`POT_ANIM_SHRINK`), disappears for a beat (`POT_ANIM_HIDDEN`),
-then calls `sim.settleIntoTray(ballId)` to move it to one fixed spot just
-outside a short (vertical) edge of the table — on the wooden rail itself,
-marked with a faint ring — and grows back in (`POT_ANIM_GROW`). None of this
-is simulated physics; it's purely presentational, tracked per ball in a
-small phase state machine (`shrinking → hidden → growing`) so a mid-flight
-ball is neither draggable nor rendered from stale physics state.
+then calls `sim.settleIntoTray(ballId)` to move it into the tray (see below)
+and grows back in (`POT_ANIM_GROW`). None of this is simulated physics; it's
+purely presentational, tracked per ball in a small phase state machine
+(`shrinking → hidden → growing`) so a mid-flight ball is neither draggable
+nor rendered from stale physics state.
+
+The tray itself (`config.ts`) is one dedicated area just outside a short
+(vertical) edge of the table — a small wooden shelf, flush with the frame's
+top surface — laid out as an 8×2 slot grid (`traySlotPosition`) rather than
+a single point, so several balls potted in succession land spaced apart
+instead of piling on top of each other. `settleIntoTray` hands each newly
+captured ball the first slot not already sat in by another potted ball
+(`nextFreeTraySlot`, comparing against every other ball still resting past
+the felt); dragging a ball back onto the table frees its slot for reuse.
 
 Once settled, a tray ball can be dragged like any other (`sim.placeBall`):
 moved within the tray freely, or dropped back onto the felt — which clears
