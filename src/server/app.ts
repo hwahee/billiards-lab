@@ -6,6 +6,7 @@
  */
 import type { Container } from './container';
 import type { HttpDeps } from './http/respond';
+import { billiardsRoutes } from './routes/billiards';
 import { livenessRoute, readinessRoute, type AppState } from './routes/health';
 import { todoCollectionRoutes, todoItemRoutes } from './routes/todos';
 
@@ -21,6 +22,7 @@ export function buildApp(container: Container, state: AppState) {
       '/api/health/ready': readinessRoute(container, state),
       '/api/todos': todoCollectionRoutes(container, deps),
       '/api/todos/:id': todoItemRoutes(container, deps),
+      '/api/billiards': billiardsRoutes(container, deps),
       /** WebSocket endpoint: pushes `{action, todoId}` on every todo change. */
       '/ws': (req: Bun.BunRequest<'/ws'>, server: Bun.Server<undefined>) =>
         server.upgrade(req)

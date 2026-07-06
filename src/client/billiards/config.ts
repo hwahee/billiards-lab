@@ -6,18 +6,8 @@
  * this file only fixes the presentation and picks which preset is active.
  */
 import type { MessageKey, MessageParams } from '@shared/i18n';
-import {
-  createInitialGameState,
-  createPoolGameState,
-  type BilliardsGameState,
-} from '@shared/billiards/game-state';
-import {
-  CAROM_TABLE,
-  DEFAULT_PARAMS,
-  POOL_TABLE,
-  type StrikeInput,
-  type TableConfig,
-} from '@shared/billiards/physics';
+import { GAME_PRESETS, type BilliardsVariant, type GamePreset } from '@shared/billiards/game-state';
+import type { StrikeInput } from '@shared/billiards/physics';
 
 export interface BallSpec {
   id: string;
@@ -91,94 +81,22 @@ export function ballLabel(
   return t(spec.labelKey, spec.labelParams);
 }
 
-export type BilliardsVariant = 'carom' | 'pool';
-
-export interface BilliardsPreset {
-  variant: BilliardsVariant;
-  table: TableConfig;
-  cueBallId: string;
+/** A game preset plus how this client presents it. */
+export interface BilliardsPreset extends GamePreset {
   ballSpecs: readonly BallSpec[];
   labelKey: MessageKey;
-  createState: () => BilliardsGameState;
-}
-
-/**
- * Pocketed-ball holding tray: one dedicated area just outside a short
- * (vertical) edge of the table, laid out as a grid so simultaneously
- * pocketed balls sit spaced apart instead of piling on top of each other.
- * Only meaningful for tables with pockets.
- */
-const TRAY_MARGIN = 0.06;
-const TRAY_ROWS = 2;
-const TRAY_COLS = 8;
-const TRAY_SLOT_GAP = DEFAULT_PARAMS.ballRadius * 2.4;
-const TRAY_SLOT_COUNT = TRAY_ROWS * TRAY_COLS;
-
-/** The (row, col) grid slot's centre, `index` counting row-major from 0. */
-function traySlotPosition(table: TableConfig, index: number): { x: number; y: number } {
-  const row = Math.floor(index / TRAY_COLS);
-  const col = index % TRAY_COLS;
-  return {
-    x: table.width / 2 + TRAY_MARGIN + (row + 0.5) * TRAY_SLOT_GAP,
-    y: (col - (TRAY_COLS - 1) / 2) * TRAY_SLOT_GAP,
-  };
-}
-
-/**
- * The first tray slot not already sat in by one of `occupied`'s positions
- * (other potted balls already resting in the tray). Falls back to extending
- * the grid one more row if every slot is somehow taken.
- */
-export function nextFreeTraySlot(
-  table: TableConfig,
-  occupied: readonly { x: number; y: number }[],
-): { x: number; y: number } {
-  const R = DEFAULT_PARAMS.ballRadius;
-  for (let i = 0; i < TRAY_SLOT_COUNT; i += 1) {
-    const slot = traySlotPosition(table, i);
-    if (!occupied.some((p) => Math.hypot(p.x - slot.x, p.y - slot.y) < R * 1.5)) return slot;
-  }
-  return traySlotPosition(table, occupied.length);
-}
-
-/** Rectangular footprint of the whole tray grid (table coordinates), for drawing its shelf. */
-export function trayFootprint(table: TableConfig): {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} {
-  const R = DEFAULT_PARAMS.ballRadius;
-  return {
-    x: table.width / 2 + TRAY_MARGIN + (TRAY_ROWS * TRAY_SLOT_GAP) / 2,
-    y: 0,
-    width: TRAY_ROWS * TRAY_SLOT_GAP + R,
-    height: TRAY_COLS * TRAY_SLOT_GAP + R,
-  };
-}
-
-/** Whether (x, y) lies within the legal playing bounds of `table` (ball-radius inset). */
-export function isOnFelt(table: TableConfig, x: number, y: number): boolean {
-  const R = DEFAULT_PARAMS.ballRadius;
-  return Math.abs(x) <= table.width / 2 - R && Math.abs(y) <= table.height / 2 - R;
 }
 
 export const PRESETS: Record<BilliardsVariant, BilliardsPreset> = {
   carom: {
-    variant: 'carom',
-    table: CAROM_TABLE,
-    cueBallId: 'white',
+    ...GAME_PRESETS.carom,
     ballSpecs: CAROM_BALL_SPECS,
     labelKey: 'billiards.preset.carom',
-    createState: createInitialGameState,
   },
   pool: {
-    variant: 'pool',
-    table: POOL_TABLE,
-    cueBallId: 'cue',
+    ...GAME_PRESETS.pool,
     ballSpecs: POOL_BALL_SPECS,
     labelKey: 'billiards.preset.pool',
-    createState: createPoolGameState,
   },
 };
 

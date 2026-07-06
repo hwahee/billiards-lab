@@ -16,6 +16,7 @@
  * ./queries.ts), never call `fetch` directly.
  */
 import type { Page } from '@shared/api/pagination';
+import type { BilliardsCommand, BilliardsRoomSnapshot } from '@shared/billiards/room';
 import type { CreateTodoInput, Todo, TodoListQuery, UpdateTodoInput } from '@shared/domain/todo';
 
 import { apiFetch } from './http';
@@ -79,5 +80,32 @@ export const todosApi = {
    */
   remove(id: string): Promise<void> {
     return apiFetch(`/api/todos/${id}`, { method: 'DELETE' });
+  },
+};
+
+export const billiardsApi = {
+  /**
+   * `GET /api/billiards`
+   *
+   * The server-authoritative billiards room snapshot: variant, phase,
+   * generation, physics params, sim speed and the full game state (balls,
+   * clock, collision log). Used for the initial load and for polling while a
+   * shot is in flight.
+   */
+  snapshot(): Promise<BilliardsRoomSnapshot> {
+    return apiFetch('/api/billiards');
+  },
+
+  /**
+   * `POST /api/billiards`
+   *
+   * Applies one `BilliardsCommand` (strike / reset / variant / params /
+   * simSpeed / togglePause / stepOnce / placeBall / settleIntoTray) and
+   * returns the updated snapshot. Commands illegal in the current phase are
+   * no-ops server-side — the response is still the authoritative state.
+   * - Errors: 400 `VALIDATION_ERROR` for malformed commands.
+   */
+  command(command: BilliardsCommand): Promise<BilliardsRoomSnapshot> {
+    return apiFetch('/api/billiards', { method: 'POST', body: command });
   },
 };

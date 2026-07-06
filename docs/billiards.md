@@ -13,17 +13,46 @@ played back in 3D. Because the engine is a fixed-timestep pure function, the
 
 ## Where things live
 
-| Piece                                                      | Path                                      |
-| ---------------------------------------------------------- | ----------------------------------------- |
-| Physics engine (pure TS, no rendering deps), incl. pockets | `src/shared/billiards/physics.ts`         |
-| Engine tests (determinism, draw/follow, cushions, pockets) | `src/shared/billiards/physics.test.ts`    |
-| Serializable game state (layouts, strike, advance)         | `src/shared/billiards/game-state.ts`      |
-| Game-state tests (JSON round-trip, collision log, rack)    | `src/shared/billiards/game-state.test.ts` |
-| Presets (carom/pool tables, ball specs, default shot)      | `src/client/billiards/config.ts`          |
-| Sim state container (refs + React state, preset switch)    | `src/client/billiards/use-billiards.ts`   |
-| 3D scene (table, pockets, balls, prediction lines)         | `src/client/billiards/scene.tsx`          |
-| Control panel (incl. preset selector)                      | `src/client/billiards/controls.tsx`       |
-| Page                                                       | `src/client/pages/billiards-page.tsx`     |
+| Piece                                                         | Path                                            |
+| ------------------------------------------------------------- | ----------------------------------------------- |
+| Physics engine (pure TS, no rendering deps), incl. pockets    | `src/shared/billiards/physics.ts`               |
+| Engine tests (determinism, draw/follow, cushions, pockets)    | `src/shared/billiards/physics.test.ts`          |
+| Serializable game state, presets, placement, tray             | `src/shared/billiards/game-state.ts`            |
+| Game-state tests (JSON round-trip, collision log, rack)       | `src/shared/billiards/game-state.test.ts`       |
+| Room wire protocol (snapshot type, command validators)        | `src/shared/billiards/room.ts`                  |
+| Server-authoritative room service (owns state, tick loop)     | `src/server/services/billiards/room-service.ts` |
+| Room HTTP surface (`GET`/`POST /api/billiards`)               | `src/server/routes/billiards.ts`                |
+| Room integration tests (over HTTP)                            | `src/server/http/billiards.integration.test.ts` |
+| Presentation config (ball specs/colours, default shot)        | `src/client/billiards/config.ts`                |
+| Client room state (commands, polling, snapshot interpolation) | `src/client/billiards/use-billiards.ts`         |
+| 3D scene (table, pockets, balls, prediction lines)            | `src/client/billiards/scene.tsx`                |
+| Control panel (incl. preset selector)                         | `src/client/billiards/controls.tsx`             |
+| Page                                                          | `src/client/pages/billiards-page.tsx`           |
+
+## Server-authoritative architecture
+
+The live game runs on the SERVER. `BilliardsRoomService` (a container
+singleton) owns the serializable game state, the physics coefficients and
+the sim phase; while a shot is in flight it advances the fixed-step engine
+from a wall-clock timer (elapsed time → SIM_DT-step accumulator, so timer
+jitter never changes the trajectory) and goes idle when every ball rests.
+
+Clients never integrate the live game. Every input — strike, reset, preset
+switch, coefficient change, pause/step, drag placement, tray settling — is a
+`BilliardsCommand` (one discriminated union, validated at the boundary in
+`@shared/billiards/room`) POSTed to `/api/billiards`, and every response is
+the full authoritative `BilliardsRoomSnapshot`. Commands illegal in the
+current phase (strike while running, …) are server-side no-ops that still
+return the authoritative state.
+
+Rendering: the client applies each command response, polls the snapshot at
+~12 Hz while the phase is `running`, and draws `interpolatedBalls(now)` — a
+render-only smoothing that lerps positions and nlerps orientation
+quaternions between the two newest snapshots, a fixed delay behind the
+server. Drags apply locally first (the same shared placement rules) and sync
+on a trailing throttle, so the pointer never fights the authority. The
+strike _preview_ (`predictPaths`) still runs client-side — it is a pure
+function of the last snapshot, not the live game.
 
 ## Physics model
 
