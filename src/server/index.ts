@@ -10,10 +10,9 @@
  * client and server code (see @shared/api/version for the skew handshake).
  */
 import homepage from '../client/index.html';
-import { buildApp, WS_TOPIC_TODOS } from './app';
+import { bridgePubSubToWebSocket, buildApp } from './app';
 import { loadServerConfig } from './config';
 import { createContainer } from './container';
-import { CHANNELS } from './pubsub';
 import type { AppState } from './routes/health';
 
 // Policy: the server process itself lives in UTC; time-zone conversion only
@@ -48,11 +47,7 @@ if (config.serverRole === 'web' || config.serverRole === 'all') {
 
   // Bridge: pub/sub bus → WebSocket clients connected to THIS instance.
   // With PUBSUB_DRIVER=redis this fans out across all instances.
-  const unsubscribe = await container
-    .pubsub()
-    .subscribe(CHANNELS.todosChanged, (message) =>
-      server.publish(WS_TOPIC_TODOS, JSON.stringify(message)),
-    );
+  const unsubscribe = await bridgePubSubToWebSocket(server, container);
 
   stopHooks.push(async () => {
     await unsubscribe();

@@ -90,3 +90,23 @@ export const billiardsCommandValidator = toValidator(
 );
 
 export type BilliardsCommand = Infer<typeof billiardsCommandValidator>;
+
+/**
+ * Inbound `/ws` control message: a socket asks to join/leave the billiards
+ * feed. Sockets get todo events by default but billiards snapshots only on
+ * request — the feed streams at ~25 Hz during a shot, which pages that don't
+ * render the table must not receive.
+ */
+export const wsSubscriptionValidator = toValidator(
+  s.strictObject({
+    type: s.enum(['subscribe', 'unsubscribe']),
+    channel: s.literal('billiards'),
+  }),
+);
+export type WsSubscription = Infer<typeof wsSubscriptionValidator>;
+
+/** Outbound `/ws` frame carrying one authoritative room snapshot. */
+export interface BilliardsLiveMessage {
+  channel: 'billiards';
+  snapshot: BilliardsRoomSnapshot;
+}

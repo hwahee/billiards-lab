@@ -45,14 +45,27 @@ the full authoritative `BilliardsRoomSnapshot`. Commands illegal in the
 current phase (strike while running, …) are server-side no-ops that still
 return the authoritative state.
 
-Rendering: the client applies each command response, polls the snapshot at
-~12 Hz while the phase is `running`, and draws `interpolatedBalls(now)` — a
-render-only smoothing that lerps positions and nlerps orientation
-quaternions between the two newest snapshots, a fixed delay behind the
-server. Drags apply locally first (the same shared placement rules) and sync
-on a trailing throttle, so the pointer never fights the authority. The
-strike _preview_ (`predictPaths`) still runs client-side — it is a pure
-function of the last snapshot, not the live game.
+Realtime fan-out: every room update — command results and (throttled to
+~25 Hz) self-driven ticks — goes onto the pub/sub bus
+(`CHANNELS.billiardsUpdated`), and the `/ws` bridge publishes it to the
+`ws.billiards` topic; with `PUBSUB_DRIVER=redis` this crosses instances, so
+sockets connected anywhere see shots struck anywhere. The billiards feed is
+strictly opt-in per socket (`{type:'subscribe',channel:'billiards'}` over
+`/ws`, validated) because pages that don't render the table — e.g. Todos,
+which invalidates queries on every `/ws` message — must not receive a 25 Hz
+stream.
+
+Rendering: the client applies snapshots from three sources — each command
+response, the `/ws` push feed, and a fallback poll while `running` (slow
+when the socket is healthy, ~12 Hz when it is down) — dropping out-of-order
+frames by sim clock. It draws `interpolatedBalls(now)`: a render-only
+smoothing that lerps positions and nlerps orientation quaternions between
+the two newest snapshots, a fixed delay behind the server. Drags apply
+locally first (the same shared placement rules), sync on a trailing
+throttle, and briefly ignore pushed snapshots (own echoes), so the pointer
+never fights the authority. The strike _preview_ (`predictPaths`) still
+runs client-side — it is a pure function of the last snapshot, not the live
+game.
 
 ## Physics model
 

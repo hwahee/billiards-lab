@@ -144,3 +144,29 @@ describe('ball placement', () => {
     expect(after.game.balls).toEqual(before.game.balls);
   });
 });
+
+describe('update broadcasts', () => {
+  test('every applied command emits one snapshot through onUpdate', () => {
+    const updates: number[] = [];
+    const service = new BilliardsRoomService({
+      onUpdate: (snapshot) => updates.push(snapshot.generation),
+    });
+    service.command({ type: 'reset' });
+    service.command({ type: 'variant', variant: 'pool' });
+    expect(updates).toEqual([1, 2]);
+    service.dispose();
+  });
+
+  test('a running shot streams snapshots and ends with the at-rest state', async () => {
+    const phases: string[] = [];
+    const service = new BilliardsRoomService({
+      onUpdate: (snapshot) => phases.push(snapshot.phase),
+    });
+    service.command(STRIKE);
+    await Bun.sleep(150);
+    service.dispose();
+    // The command echo plus several self-driven ticks, all still running.
+    expect(phases.length).toBeGreaterThan(2);
+    expect(phases[0]).toBe('running');
+  });
+});

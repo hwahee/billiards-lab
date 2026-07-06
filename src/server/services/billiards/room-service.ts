@@ -11,9 +11,13 @@
  * trajectory is the same deterministic SIM_DT sequence regardless of timer
  * jitter (the same scheme the client's render loop used before the
  * migration). When every ball is at rest the timer stops and the room goes
- * idle. `onUpdate` fires after every self-driven tick that stepped the
- * simulation — the hook the WebSocket broadcast (step 3) attaches to;
- * command results are returned to the caller directly.
+ * idle.
+ *
+ * `onUpdate` is the broadcast hook: it fires after every applied command and
+ * on self-driven ticks (throttled to BROADCAST_MS, but always on the final
+ * tick that puts the room to rest). The container wires it onto the pub/sub
+ * bus, which the /ws bridge fans out to every subscribed client — across
+ * instances with the redis driver.
  */
 import {
   advanceGameState,
@@ -31,11 +35,13 @@ import type { BilliardsCommand, BilliardsRoomSnapshot, RoomPhase } from '@shared
 const TICK_MS = 20;
 /** Cap on how much wall clock one tick may consume (timer stalls, debugger). */
 const MAX_TICK_ELAPSED_MS = 250;
+/** Minimum spacing of self-driven broadcasts (the final at-rest one always goes out). */
+const BROADCAST_MS = 40;
 /** One UI "step" while paused: 1/60 s of simulation. */
 const PAUSE_STEP_STEPS = Math.round(1 / 60 / SIM_DT);
 
 export interface BilliardsRoomDeps {
-  /** Called after every self-driven tick that advanced the simulation. */
+  /** Called after every applied command and (throttled) after self-driven ticks. */
   onUpdate?: (snapshot: BilliardsRoomSnapshot) => void;
 }
 
@@ -102,7 +108,11 @@ export class BilliardsRoomService {
         settleBallIntoTray(this.game, this.table, command.ballId);
         break;
     }
-    return this.snapshot();
+    const snapshot = this.snapshot();
+    // Broadcast command results too: other clients must see strikes, resets
+    // and drags, not only the self-driven ticks in between.
+    this.deps.onUpdate?.(snapshot);
+    return snapshot;
   }
 
   /**
@@ -169,12 +179,17 @@ export class BilliardsRoomService {
   private startLoop(): void {
     if (this.timer) return;
     this.lastTickMs = Date.now();
+    let lastBroadcastMs = 0;
     this.timer = setInterval(() => {
       const now = Date.now();
       const elapsed = now - this.lastTickMs;
       this.lastTickMs = now;
       this.tick(elapsed);
-      this.deps.onUpdate?.(this.snapshot());
+      // Throttle the stream, but never swallow the final at-rest snapshot.
+      if (this.phase !== 'running' || now - lastBroadcastMs >= BROADCAST_MS) {
+        lastBroadcastMs = now;
+        this.deps.onUpdate?.(this.snapshot());
+      }
     }, TICK_MS);
     // Never keep the process alive just for a rolling ball.
     this.timer.unref?.();

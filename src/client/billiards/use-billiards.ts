@@ -5,10 +5,13 @@
  * The client no longer integrates physics for the live game. Every input
  * (strike, reset, preset switch, coefficient change, pause/step, ball
  * placement) is sent to the server as a BilliardsCommand, and what the page
- * renders is the server's snapshots: applied from each command response, and
- * polled at a fixed cadence while a shot is in flight. The only physics the
- * client still runs is the strike *preview* (predictPaths on a clone), which
- * is a pure function of the last snapshot.
+ * renders is the server's snapshots, which arrive three ways: as each
+ * command's response, pushed over the `/ws` billiards feed (the server
+ * broadcasts every room update to all subscribed clients — this is how a
+ * shot struck in one browser plays back in every other), and from a slow
+ * fallback poll while a shot is in flight in case the socket is down. The
+ * only physics the client still runs is the strike *preview* (predictPaths
+ * on a clone), which is a pure function of the last snapshot.
  *
  * Rendering between snapshots: the newest two snapshots form an
  * interpolation buffer, and `interpolatedBalls(now)` renders the game a
@@ -33,13 +36,25 @@ import {
   type BallState,
   type PhysicsParams,
 } from '@shared/billiards/physics';
-import type { BilliardsCommand, BilliardsRoomSnapshot, RoomPhase } from '@shared/billiards/room';
+import type {
+  BilliardsCommand,
+  BilliardsLiveMessage,
+  BilliardsRoomSnapshot,
+  RoomPhase,
+  WsSubscription,
+} from '@shared/billiards/room';
 
 import { billiardsApi } from '../api/endpoints';
 import { DEFAULT_SHOT, toStrikeInput, type ShotSettings } from './config';
 
-/** Poll cadence while a shot is in flight (the WebSocket push replaces this in a later step). */
+/** Poll cadence while a shot is in flight and the WebSocket is down. */
 const POLL_RUNNING_MS = 80;
+/** Poll cadence while the WebSocket feed is healthy — just a safety net. */
+const POLL_FALLBACK_MS = 1000;
+/** Reconnect delay after the WebSocket drops. */
+const WS_RETRY_MS = 2000;
+/** After a local drag move, ignore pushed snapshots this long (own echoes). */
+const PLACE_ECHO_SUPPRESS_MS = 400;
 /** Rendered time sits this far behind the newest snapshot so there is always something to interpolate toward. */
 const INTERP_DELAY_MS = 170;
 /** Trailing throttle for drag → placeBall commands. */
@@ -83,6 +98,17 @@ export interface BilliardsSim {
   interpolatedBalls: (nowMs: number) => readonly BallState[];
 }
 
+function isBilliardsLiveMessage(value: unknown): value is BilliardsLiveMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'channel' in value &&
+    value.channel === 'billiards' &&
+    'snapshot' in value &&
+    typeof value.snapshot === 'object'
+  );
+}
+
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
@@ -124,9 +150,14 @@ export function useBilliardsSim(): BilliardsSim {
   const simSpeedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPlaceRef = useRef<BilliardsCommand | null>(null);
+  const wsConnectedRef = useRef(false);
+  const lastLocalPlaceMsRef = useRef(-Infinity);
 
   const applySnapshot = useCallback((snap: BilliardsRoomSnapshot) => {
     const generationChanged = snap.generation !== generationRef.current;
+    // Drop out-of-order frames (poll responses racing WS pushes, redis
+    // fan-out): within one generation the sim clock only moves forward.
+    if (!generationChanged && snap.game.simTime < gameRef.current.simTime) return;
     generationRef.current = snap.generation;
     gameRef.current = snap.game;
     variantRef.current = snap.variant;
@@ -163,7 +194,8 @@ export function useBilliardsSim(): BilliardsSim {
     [applySnapshot],
   );
 
-  // Initial snapshot on mount, then keep polling while a shot is in flight.
+  // Initial snapshot on mount, then keep polling while a shot is in flight —
+  // slowly while the WebSocket feed is healthy (safety net), fast when not.
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -175,7 +207,10 @@ export function useBilliardsSim(): BilliardsSim {
         console.error('billiards snapshot failed', error);
       }
       if (!cancelled && phaseRef.current === 'running') {
-        timer = setTimeout(() => void poll(), POLL_RUNNING_MS);
+        timer = setTimeout(
+          () => void poll(),
+          wsConnectedRef.current ? POLL_FALLBACK_MS : POLL_RUNNING_MS,
+        );
       }
     };
     void poll();
@@ -185,6 +220,49 @@ export function useBilliardsSim(): BilliardsSim {
     };
     // `phase` re-arms the chain whenever a command flips the room's phase.
   }, [applySnapshot, phase]);
+
+  // Live feed: the server pushes every room update over /ws (fan-out crosses
+  // instances via pub/sub), so shots struck by OTHER clients play back here
+  // without any polling. Reconnects with a fixed backoff while mounted.
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let unmounted = false;
+
+    const connect = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
+      socket.onopen = () => {
+        wsConnectedRef.current = true;
+        const subscribe: WsSubscription = { type: 'subscribe', channel: 'billiards' };
+        socket?.send(JSON.stringify(subscribe));
+      };
+      socket.onmessage = (event) => {
+        let message: unknown;
+        try {
+          message = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+        if (!isBilliardsLiveMessage(message)) return;
+        // Our own drag echoes arrive slightly stale; local state is ahead.
+        if (performance.now() - lastLocalPlaceMsRef.current < PLACE_ECHO_SUPPRESS_MS) return;
+        applySnapshot(message.snapshot);
+      };
+      socket.onclose = () => {
+        wsConnectedRef.current = false;
+        if (!unmounted) retryTimer = setTimeout(connect, WS_RETRY_MS);
+      };
+    };
+
+    connect();
+    return () => {
+      unmounted = true;
+      wsConnectedRef.current = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      socket?.close();
+    };
+  }, [applySnapshot]);
 
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
@@ -246,6 +324,7 @@ export function useBilliardsSim(): BilliardsSim {
     const table = GAME_PRESETS[variantRef.current].table;
     const changed = placeBallInState(gameRef.current, table, physicsRef.current, ballId, x, y);
     if (!changed) return;
+    lastLocalPlaceMsRef.current = performance.now();
     setSnapshot(cloneBalls(gameRef.current.balls));
 
     pendingPlaceRef.current = { type: 'placeBall', ballId, x, y };
