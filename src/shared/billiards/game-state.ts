@@ -14,6 +14,7 @@
  * advance loop with collision logging.
  */
 import {
+  CAROM_TABLE,
   DEFAULT_PARAMS,
   identityQuat,
   POOL_TABLE,
@@ -114,6 +115,164 @@ export function createPoolGameState(): BilliardsGameState {
   });
 
   return { balls, simTime: 0, events: [], lastEvent: null };
+}
+
+export type BilliardsVariant = 'carom' | 'pool';
+
+/**
+ * The game data of a preset — everything the SERVER needs to own a game of
+ * that variant. Presentation (colours, labels) stays client-side.
+ */
+export interface GamePreset {
+  variant: BilliardsVariant;
+  table: TableConfig;
+  cueBallId: string;
+  createState: () => BilliardsGameState;
+}
+
+export const GAME_PRESETS: Record<BilliardsVariant, GamePreset> = {
+  carom: {
+    variant: 'carom',
+    table: CAROM_TABLE,
+    cueBallId: 'white',
+    createState: createInitialGameState,
+  },
+  pool: {
+    variant: 'pool',
+    table: POOL_TABLE,
+    cueBallId: 'cue',
+    createState: createPoolGameState,
+  },
+};
+
+/**
+ * Pocketed-ball holding tray: one dedicated area just outside a short
+ * (vertical) edge of the table, laid out as a grid so simultaneously
+ * pocketed balls sit spaced apart instead of piling on top of each other.
+ * Only meaningful for tables with pockets. The tray is part of the shared
+ * game data (potted balls' positions live in the game state), while how it
+ * is drawn stays client-side.
+ */
+const TRAY_MARGIN = 0.06;
+const TRAY_ROWS = 2;
+const TRAY_COLS = 8;
+const TRAY_SLOT_GAP = DEFAULT_PARAMS.ballRadius * 2.4;
+const TRAY_SLOT_COUNT = TRAY_ROWS * TRAY_COLS;
+
+/** The (row, col) grid slot's centre, `index` counting row-major from 0. */
+function traySlotPosition(table: TableConfig, index: number): { x: number; y: number } {
+  const row = Math.floor(index / TRAY_COLS);
+  const col = index % TRAY_COLS;
+  return {
+    x: table.width / 2 + TRAY_MARGIN + (row + 0.5) * TRAY_SLOT_GAP,
+    y: (col - (TRAY_COLS - 1) / 2) * TRAY_SLOT_GAP,
+  };
+}
+
+/**
+ * The first tray slot not already sat in by one of `occupied`'s positions
+ * (other potted balls already resting in the tray). Falls back to extending
+ * the grid one more row if every slot is somehow taken.
+ */
+function nextFreeTraySlot(
+  table: TableConfig,
+  occupied: readonly { x: number; y: number }[],
+): { x: number; y: number } {
+  const R = DEFAULT_PARAMS.ballRadius;
+  for (let i = 0; i < TRAY_SLOT_COUNT; i += 1) {
+    const slot = traySlotPosition(table, i);
+    if (!occupied.some((p) => Math.hypot(p.x - slot.x, p.y - slot.y) < R * 1.5)) return slot;
+  }
+  return traySlotPosition(table, occupied.length);
+}
+
+/** Rectangular footprint of the whole tray grid (table coordinates), for drawing its shelf. */
+export function trayFootprint(table: TableConfig): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const R = DEFAULT_PARAMS.ballRadius;
+  return {
+    x: table.width / 2 + TRAY_MARGIN + (TRAY_ROWS * TRAY_SLOT_GAP) / 2,
+    y: 0,
+    width: TRAY_ROWS * TRAY_SLOT_GAP + R,
+    height: TRAY_COLS * TRAY_SLOT_GAP + R,
+  };
+}
+
+/** Whether (x, y) lies within the legal playing bounds of `table` (ball-radius inset). */
+export function isOnFelt(table: TableConfig, x: number, y: number): boolean {
+  const R = DEFAULT_PARAMS.ballRadius;
+  return Math.abs(x) <= table.width / 2 - R && Math.abs(y) <= table.height / 2 - R;
+}
+
+/**
+ * Freely repositions a resting ball (table setup / practice mode). A potted
+ * ball dropped off the felt just moves within the holding tray; dropped onto
+ * the felt it rejoins play. An active ball's target is clamped inside the
+ * rails and rejected outright if it would overlap another ball. Returns
+ * whether the state changed. The caller is responsible for only allowing
+ * this while the game is idle.
+ */
+export function placeBall(
+  state: BilliardsGameState,
+  table: TableConfig,
+  params: PhysicsParams,
+  ballId: string,
+  x: number,
+  y: number,
+): boolean {
+  const ball = state.balls.find((b) => b.id === ballId);
+  if (!ball) return false;
+
+  const R = params.ballRadius;
+  const xLim = table.width / 2 - R;
+  const yLim = table.height / 2 - R;
+  const onFelt = Math.abs(x) <= xLim && Math.abs(y) <= yLim;
+
+  if (ball.potted && !onFelt) {
+    // Still off the table: free rearranging within the holding tray.
+    ball.position = { x, y };
+    return true;
+  }
+
+  const cx = Math.min(xLim, Math.max(-xLim, x));
+  const cy = Math.min(yLim, Math.max(-yLim, y));
+  const overlaps = state.balls.some(
+    (other) =>
+      other.id !== ballId &&
+      !other.potted &&
+      Math.hypot(cx - other.position.x, cy - other.position.y) < 2 * R,
+  );
+  if (overlaps) return false;
+
+  ball.position = { x: cx, y: cy };
+  ball.velocity = { x: 0, y: 0 };
+  ball.spin = { x: 0, y: 0, z: 0 };
+  ball.potted = false; // dropped back onto the felt: rejoins play
+  return true;
+}
+
+/**
+ * Moves a captured (potted) ball to the pocketed-ball holding tray, at rest
+ * in the first free slot. No-op for unknown or not-potted balls.
+ */
+export function settleBallIntoTray(
+  state: BilliardsGameState,
+  table: TableConfig,
+  ballId: string,
+): boolean {
+  const ball = state.balls.find((b) => b.id === ballId);
+  if (!ball?.potted) return false;
+  // Only balls already resting in the tray occupy a slot — one still
+  // mid-animation at its pocket hasn't been assigned one yet.
+  const occupied = state.balls
+    .filter((b) => b.id !== ballId && b.potted && b.position.x > table.width / 2)
+    .map((b) => b.position);
+  ball.position = nextFreeTraySlot(table, occupied);
+  return true;
 }
 
 /** Applies the strike variables to one ball of the state (replaces v and ω). */

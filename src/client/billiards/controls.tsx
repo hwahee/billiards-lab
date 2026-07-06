@@ -4,6 +4,7 @@
  * lives in the useBilliardsSim hook.
  */
 import type { MessageKey } from '@shared/i18n';
+import type { BilliardsVariant } from '@shared/billiards/game-state';
 import { DEFAULT_PARAMS, type PhysicsParams } from '@shared/billiards/physics';
 
 import { useI18n } from '../i18n/locale-context';
@@ -11,7 +12,7 @@ import { TESTID } from '../testing/testids';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { Select } from '../ui/select';
-import { PRESETS, type BilliardsVariant } from './config';
+import { PRESETS } from './config';
 import type { BilliardsSim } from './use-billiards';
 
 function SliderRow({

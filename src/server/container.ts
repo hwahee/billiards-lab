@@ -26,12 +26,14 @@ import {
   createPostgresTodoRepository,
 } from './repositories/postgres';
 import type { AuditLogRepository, TodoRepository, UnitOfWork } from './repositories/types';
+import { BilliardsRoomService } from './services/billiards/room-service';
 import { TodoService } from './services/todo-service';
 
 export interface Container {
   readonly config: ServerConfig;
   readonly log: Logger;
   todoService(): TodoService;
+  billiardsRoom(): BilliardsRoomService;
   pubsub(): PubSub;
   /** Health probe: is the persistence layer reachable? */
   dbPing(): Promise<boolean>;
@@ -100,16 +102,24 @@ export function createContainer(
       }),
   );
 
+  let billiardsRoomCreated = false;
+  const billiardsRoom = lazy(() => {
+    billiardsRoomCreated = true;
+    return new BilliardsRoomService();
+  });
+
   return {
     config,
     log,
     todoService,
+    billiardsRoom,
     pubsub,
     async dbPing() {
       if (config.dbDriver === 'memory') return true;
       return postgres().ping();
     },
     async dispose() {
+      if (billiardsRoomCreated) billiardsRoom().dispose();
       await pubsub().close();
       if (postgresCreated) await postgres().close();
     },

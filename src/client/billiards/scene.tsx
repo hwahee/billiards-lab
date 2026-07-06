@@ -5,10 +5,11 @@
  * y-up, so a point maps as (x, y) → [x, height, −y] — a proper rotation, so
  * the orientation quaternion maps the same way: (x, y, z, w) → (x, z, −y, w).
  *
- * The frame loop (inside <BallMeshes/>) advances the deterministic engine
- * with a fixed-step accumulator; rendering only mirrors the mutable state.
- * The table itself (dimensions, pocket mouths) and the ball set both follow
- * the active preset (carom vs. pool), so both re-render whenever it changes.
+ * The physics runs on the SERVER; the frame loop (inside <BallMeshes/>) only
+ * renders `sim.interpolatedBalls(now)` — the authoritative snapshots smoothed
+ * over time. The table itself (dimensions, pocket mouths) and the ball set
+ * both follow the active preset (carom vs. pool), so both re-render whenever
+ * it changes.
  *
  * Free ball placement (idle only): picking up a ball starts a drag tracked
  * by an invisible plane raised above every ball, so pointer moves keep
@@ -25,14 +26,10 @@ import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Mesh } from 'three';
 
-import {
-  DEFAULT_PARAMS,
-  SIM_DT,
-  type PredictedPath,
-  type TableConfig,
-} from '@shared/billiards/physics';
+import { isOnFelt, trayFootprint } from '@shared/billiards/game-state';
+import { DEFAULT_PARAMS, type PredictedPath, type TableConfig } from '@shared/billiards/physics';
 
-import { ballSpec, isOnFelt, PRESETS, trayFootprint, type ShotSettings } from './config';
+import { ballSpec, PRESETS, type ShotSettings } from './config';
 import { makeBallTexture, makeNumberedBallTexture } from './textures';
 import type { BilliardsSim } from './use-billiards';
 
@@ -180,7 +177,6 @@ function BallMeshes({
   onDragEnd: () => void;
 }) {
   const meshRefs = useRef(new Map<string, Mesh>());
-  const accumulatorRef = useRef(0);
   const preset = PRESETS[sim.variant];
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   useCursor(draggingId !== null, 'grabbing');
@@ -220,17 +216,8 @@ function BallMeshes({
   }, [textures]);
 
   useFrame((_, delta) => {
-    if (sim.phaseRef.current === 'running') {
-      // Fixed-step accumulator: rendering rate never affects the trajectory.
-      accumulatorRef.current += Math.min(delta, 0.25) * sim.simSpeedRef.current;
-      const steps = Math.floor(accumulatorRef.current / SIM_DT);
-      if (steps > 0) {
-        accumulatorRef.current -= steps * SIM_DT;
-        sim.advance(steps);
-      }
-    }
     const table = preset.table;
-    for (const ball of sim.gameRef.current.balls) {
+    for (const ball of sim.interpolatedBalls(performance.now())) {
       const mesh = meshRefs.current.get(ball.id);
       if (!mesh) continue;
 

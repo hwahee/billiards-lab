@@ -4,6 +4,8 @@ import {
   advanceGameState,
   createInitialGameState,
   createPoolGameState,
+  placeBall,
+  settleBallIntoTray,
   strikeBall,
   type BilliardsGameState,
 } from './game-state';
@@ -132,5 +134,67 @@ describe('collision log', () => {
         expect(b.time - a.time).toBeGreaterThanOrEqual(0.08);
       }
     }
+  });
+});
+
+describe('placeBall', () => {
+  test('moves a resting ball, clamped inside the rails', () => {
+    const state = createInitialGameState();
+    expect(placeBall(state, CAROM_TABLE, DEFAULT_PARAMS, 'white', 99, -99)).toBe(true);
+    const white = state.balls.find((b) => b.id === 'white')!;
+    const R = DEFAULT_PARAMS.ballRadius;
+    expect(white.position.x).toBeCloseTo(CAROM_TABLE.width / 2 - R, 9);
+    expect(white.position.y).toBeCloseTo(-(CAROM_TABLE.height / 2 - R), 9);
+  });
+
+  test('rejects a drop that would overlap another ball', () => {
+    const state = createInitialGameState();
+    const yellow = state.balls.find((b) => b.id === 'yellow')!;
+    const before = { ...state.balls.find((b) => b.id === 'white')!.position };
+    const applied = placeBall(
+      state,
+      CAROM_TABLE,
+      DEFAULT_PARAMS,
+      'white',
+      yellow.position.x,
+      yellow.position.y,
+    );
+    expect(applied).toBe(false);
+    expect(state.balls.find((b) => b.id === 'white')!.position).toEqual(before);
+  });
+
+  test('a potted ball dropped back onto the felt rejoins play', () => {
+    const state = createPoolGameState();
+    const cue = state.balls.find((b) => b.id === 'cue')!;
+    cue.potted = true;
+    cue.position = { x: POOL_TABLE.width / 2 + 0.2, y: 0 }; // resting in the tray
+    expect(placeBall(state, POOL_TABLE, DEFAULT_PARAMS, 'cue', -0.9, 0.4)).toBe(true);
+    expect(cue.potted).toBe(false);
+    expect(cue.position).toEqual({ x: -0.9, y: 0.4 });
+  });
+});
+
+describe('settleBallIntoTray', () => {
+  test('parks potted balls in distinct tray slots past the rail', () => {
+    const state = createPoolGameState();
+    for (const id of ['1', '2']) {
+      const ball = state.balls.find((b) => b.id === id)!;
+      ball.potted = true;
+      expect(settleBallIntoTray(state, POOL_TABLE, id)).toBe(true);
+    }
+    const one = state.balls.find((b) => b.id === '1')!;
+    const two = state.balls.find((b) => b.id === '2')!;
+    expect(one.position.x).toBeGreaterThan(POOL_TABLE.width / 2);
+    expect(two.position.x).toBeGreaterThan(POOL_TABLE.width / 2);
+    expect(
+      Math.hypot(one.position.x - two.position.x, one.position.y - two.position.y),
+    ).toBeGreaterThan(DEFAULT_PARAMS.ballRadius);
+  });
+
+  test('is a no-op for a ball still in play', () => {
+    const state = createPoolGameState();
+    const before = JSON.parse(JSON.stringify(state.balls)) as typeof state.balls;
+    expect(settleBallIntoTray(state, POOL_TABLE, '5')).toBe(false);
+    expect(state.balls).toEqual(before);
   });
 });
