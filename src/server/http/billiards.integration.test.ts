@@ -125,3 +125,45 @@ describe('POST /api/billiards', () => {
     expect(red.position).toEqual({ x: -0.2, y: 0.05 });
   });
 });
+
+describe('2-player turn enforcement over HTTP', () => {
+  const P1 = 'http-player-one-1111';
+  const P2 = 'http-player-two-2222';
+  const gentleShot = { speed: 0.05, directionRad: 0, topspin: 0, sidespin: 0 };
+
+  test('the wrong player gets 403 FORBIDDEN; the active player strikes; the turn then flips', async () => {
+    await sendCommand({ type: 'join', playerId: P1 });
+    const joined = await sendCommand({ type: 'join', playerId: P2 });
+    expect(joined.body.players).toHaveLength(2);
+    expect(joined.body.activeSeat).toBe(1);
+
+    // Seat 2 (and anonymous callers) must be rejected without moving anything.
+    const rejected = await sendCommand({ type: 'strike', shot: gentleShot, playerId: P2 });
+    expect(rejected.status).toBe(403);
+    expect((rejected.body as unknown as { error: { code: string } }).error.code).toBe('FORBIDDEN');
+    const anonymous = await sendCommand({ type: 'strike', shot: gentleShot });
+    expect(anonymous.status).toBe(403);
+    expect((await getSnapshot()).body.phase).toBe('idle');
+
+    // The active player's strike runs, and rest hands the turn to seat 2.
+    const struck = await sendCommand({ type: 'strike', shot: gentleShot, playerId: P1 });
+    expect(struck.status).toBe(200);
+    expect(struck.body.phase).toBe('running');
+    let snap = struck.body;
+    for (let i = 0; i < 40 && snap.phase !== 'idle'; i += 1) {
+      await Bun.sleep(100);
+      snap = (await getSnapshot()).body;
+    }
+    expect(snap.phase).toBe('idle');
+    expect(snap.activeSeat).toBe(2);
+
+    const p1Again = await sendCommand({ type: 'strike', shot: gentleShot, playerId: P1 });
+    expect(p1Again.status).toBe(403);
+    const p2Now = await sendCommand({ type: 'strike', shot: gentleShot, playerId: P2 });
+    expect(p2Now.status).toBe(200);
+
+    // Cleanup: free both seats so earlier-style anonymous tests stay valid.
+    await sendCommand({ type: 'leave', playerId: P1 });
+    await sendCommand({ type: 'leave', playerId: P2 });
+  });
+});

@@ -67,6 +67,26 @@ never fights the authority. The strike _preview_ (`predictPaths`) still
 runs client-side — it is a pure function of the last snapshot, not the live
 game.
 
+## 2-player turns
+
+Each browser tab generates a per-tab player identity (sessionStorage) and
+joins the room on mount (`{type:'join',playerId}`, idempotent); the first
+two callers take seats 1 and 2, later ones spectate. Turn enforcement is
+active only while both seats are taken — with one player (or none) the room
+stays a free practice lab. While a match is active:
+
+- Only the active seat's player may strike; anyone else (including
+  anonymous callers) gets **403 FORBIDDEN** and nothing moves.
+- The turn passes to the other seat when the shot comes to rest; a re-rack
+  (reset / variant switch) keeps the players but restarts the cycle at
+  seat 1.
+- The control panel shows a turn badge (`Your turn` / `Opponent's turn` /
+  `Watching`) and disables Strike outside your turn.
+- Leaving (`{type:'leave'}`, sent best-effort on `pagehide` with
+  `keepalive`) frees the seat and ends enforcement. Reconnect handling is
+  deliberately minimal: the identity survives per tab, so re-joining after
+  a reload reclaims a free seat.
+
 ## Physics model
 
 Coordinates: table plane x/y, z up, SI units. Equal-mass uniform spheres,

@@ -13,7 +13,7 @@ import type { MessageKey } from '@shared/i18n';
 import { ValidationError } from '@shared/validation';
 
 import type { ServerConfig } from '../config';
-import { NotFoundError } from '../lib/errors';
+import { ForbiddenError, NotFoundError } from '../lib/errors';
 import type { Logger } from '../lib/log';
 import { createRequestContext, type RequestContext } from './context';
 import { corsHeaders, preflightResponse } from './cors';
@@ -28,6 +28,7 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
 const ERROR_MESSAGE_KEYS: Record<ApiErrorCode, MessageKey> = {
   VALIDATION_ERROR: 'error.validation',
   NOT_FOUND: 'error.notFound',
+  FORBIDDEN: 'error.forbidden',
   VERSION_MISMATCH: 'error.versionMismatch',
   INTERNAL_ERROR: 'error.internal',
 };
@@ -122,6 +123,9 @@ function mapError(error: unknown, ctx: RequestContext, log: Logger): Response {
   }
   if (error instanceof NotFoundError) {
     return errorResponse(404, 'NOT_FOUND', ctx, { resource: error.resource, id: error.id });
+  }
+  if (error instanceof ForbiddenError) {
+    return errorResponse(403, 'FORBIDDEN', ctx, { reason: error.reason });
   }
   log.error('unhandled error in api handler', {
     error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),

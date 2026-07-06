@@ -105,12 +105,16 @@ export const en = {
   'billiards.event.cushion': '{ball} — cushion',
   'billiards.event.ball': '{ball} ↔ {other}',
   'billiards.event.pocket': '{ball} — potted',
+  'billiards.turn.mine': 'Your turn',
+  'billiards.turn.opponent': "Opponent's turn",
+  'billiards.turn.watching': 'Watching — both seats are taken',
 
   'notFound.title': 'Page not found',
   'notFound.goHome': 'Go to home',
 
   'error.validation': 'The request contains invalid data.',
   'error.notFound': 'The requested resource was not found.',
+  'error.forbidden': 'You are not allowed to do that right now.',
   'error.internal': 'An unexpected error occurred. Please try again.',
   'error.versionMismatch':
     'A new version of the application has been deployed. The page will reload.',

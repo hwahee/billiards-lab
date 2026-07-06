@@ -39,7 +39,9 @@ import {
 import type {
   BilliardsCommand,
   BilliardsLiveMessage,
+  BilliardsPlayer,
   BilliardsRoomSnapshot,
+  PlayerSeat,
   RoomPhase,
   WsSubscription,
 } from '@shared/billiards/room';
@@ -67,6 +69,21 @@ interface SnapshotFrame {
   atMs: number;
 }
 
+/**
+ * This tab's player identity. sessionStorage is per-tab, so two tabs of the
+ * same browser are two distinct players — which is exactly how a 2-player
+ * match is meant to be driven (and tested) locally.
+ */
+function getPlayerId(): string {
+  const KEY = 'billiards.playerId';
+  let id = sessionStorage.getItem(KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 export interface BilliardsSim {
   variant: BilliardsVariant;
   setVariant: (variant: BilliardsVariant) => void;
@@ -91,6 +108,15 @@ export interface BilliardsSim {
   placeBall: (ballId: string, x: number, y: number) => void;
   /** Moves a just-captured ball to the pocketed-ball holding tray, at rest. */
   settleIntoTray: (ballId: string) => void;
+  // 2-player match state (turn enforcement is active only with both seats taken).
+  players: BilliardsPlayer[];
+  /** This tab's seat, or null while spectating / seats not yet assigned. */
+  mySeat: PlayerSeat | null;
+  activeSeat: PlayerSeat;
+  /** Both seats taken — the server enforces turns. */
+  matchActive: boolean;
+  /** False only while a match is active and it is the other player's turn. */
+  isMyTurn: boolean;
   // Render-loop interface (stable refs; no React re-renders involved).
   /** Latest authoritative game state (drag checks, pot detection). */
   gameRef: RefObject<BilliardsGameState>;
@@ -136,6 +162,9 @@ export function useBilliardsSim(): BilliardsSim {
   );
   const [simTime, setSimTime] = useState(0);
   const [events, setEvents] = useState<SimEvent[]>([]);
+  const [players, setPlayers] = useState<BilliardsPlayer[]>([]);
+  const [activeSeat, setActiveSeat] = useState<PlayerSeat>(1);
+  const [playerId] = useState(getPlayerId);
 
   // Placeholder until the first server snapshot arrives (same initial rack).
   const gameRef = useRef<BilliardsGameState>(GAME_PRESETS.carom.createState());
@@ -152,6 +181,8 @@ export function useBilliardsSim(): BilliardsSim {
   const pendingPlaceRef = useRef<BilliardsCommand | null>(null);
   const wsConnectedRef = useRef(false);
   const lastLocalPlaceMsRef = useRef(-Infinity);
+  const playersRef = useRef<BilliardsPlayer[]>([]);
+  const activeSeatRef = useRef<PlayerSeat>(1);
 
   const applySnapshot = useCallback((snap: BilliardsRoomSnapshot) => {
     const generationChanged = snap.generation !== generationRef.current;
@@ -179,6 +210,10 @@ export function useBilliardsSim(): BilliardsSim {
     setSnapshot(cloneBalls(snap.game.balls));
     setSimTime(snap.game.simTime);
     setEvents(snap.game.events);
+    playersRef.current = snap.players;
+    activeSeatRef.current = snap.activeSeat;
+    setPlayers(snap.players);
+    setActiveSeat(snap.activeSeat);
   }, []);
 
   const runCommand = useCallback(
@@ -264,14 +299,35 @@ export function useBilliardsSim(): BilliardsSim {
     };
   }, [applySnapshot]);
 
+  // Take a seat as soon as the page is up (idempotent server-side), and give
+  // it up when the tab goes away. `keepalive` lets the leave outlive the
+  // page; SPA navigation keeps the seat — the identity survives per tab.
+  useEffect(() => {
+    runCommand({ type: 'join', playerId });
+    const onPageHide = () => {
+      void fetch('/api/billiards', {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'leave', playerId } satisfies BilliardsCommand),
+      }).catch(() => undefined);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [playerId, runCommand]);
+
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
+    if (playersRef.current.length === 2) {
+      const me = playersRef.current.find((p) => p.playerId === playerId);
+      if (me?.seat !== activeSeatRef.current) return; // not our turn (server would 403 anyway)
+    }
     const cue = gameRef.current.balls.find(
       (b) => b.id === GAME_PRESETS[variantRef.current].cueBallId,
     );
     if (!cue || cue.potted) return; // must be dragged back onto the table first
-    runCommand({ type: 'strike', shot: toStrikeInput(shot) });
-  }, [shot, runCommand]);
+    runCommand({ type: 'strike', shot: toStrikeInput(shot), playerId });
+  }, [shot, runCommand, playerId]);
 
   const reset = useCallback(() => runCommand({ type: 'reset' }), [runCommand]);
 
@@ -406,6 +462,12 @@ export function useBilliardsSim(): BilliardsSim {
     stepOnce,
     placeBall,
     settleIntoTray,
+    players,
+    mySeat: players.find((p) => p.playerId === playerId)?.seat ?? null,
+    activeSeat,
+    matchActive: players.length === 2,
+    isMyTurn:
+      players.length < 2 || players.find((p) => p.playerId === playerId)?.seat === activeSeat,
     gameRef,
     interpolatedBalls,
   };

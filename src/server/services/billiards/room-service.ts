@@ -29,7 +29,15 @@ import {
   type BilliardsVariant,
 } from '@shared/billiards/game-state';
 import { DEFAULT_PARAMS, isAtRest, SIM_DT, type PhysicsParams } from '@shared/billiards/physics';
-import type { BilliardsCommand, BilliardsRoomSnapshot, RoomPhase } from '@shared/billiards/room';
+import type {
+  BilliardsCommand,
+  BilliardsPlayer,
+  BilliardsRoomSnapshot,
+  PlayerSeat,
+  RoomPhase,
+} from '@shared/billiards/room';
+
+import { ForbiddenError } from '../../lib/errors';
 
 /** Self-drive timer period (ms) while a shot is in flight. */
 const TICK_MS = 20;
@@ -55,6 +63,8 @@ export class BilliardsRoomService {
   private accumulatorS = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTickMs = 0;
+  private players: BilliardsPlayer[] = [];
+  private activeSeat: PlayerSeat = 1;
 
   constructor(private readonly deps: BilliardsRoomDeps = {}) {}
 
@@ -67,6 +77,8 @@ export class BilliardsRoomService {
       simSpeed: this.simSpeed,
       params: this.params,
       game: this.game,
+      players: this.players,
+      activeSeat: this.activeSeat,
     });
   }
 
@@ -79,7 +91,13 @@ export class BilliardsRoomService {
   command(command: BilliardsCommand): BilliardsRoomSnapshot {
     switch (command.type) {
       case 'strike':
-        this.strike(command.shot);
+        this.strike(command.shot, command.playerId);
+        break;
+      case 'join':
+        this.join(command.playerId);
+        break;
+      case 'leave':
+        this.players = this.players.filter((p) => p.playerId !== command.playerId);
         break;
       case 'reset':
         this.replaceGame(this.variant);
@@ -139,7 +157,29 @@ export class BilliardsRoomService {
     return GAME_PRESETS[this.variant].table;
   }
 
-  private strike(shot: Parameters<typeof strikeBall>[2]): void {
+  /** Turn enforcement is active only while both seats are taken. */
+  private get matchActive(): boolean {
+    return this.players.length === 2;
+  }
+
+  private join(playerId: string): void {
+    if (this.players.some((p) => p.playerId === playerId)) return; // already seated
+    const taken = new Set(this.players.map((p) => p.seat));
+    const seat: PlayerSeat | null = !taken.has(1) ? 1 : !taken.has(2) ? 2 : null;
+    if (seat !== null) this.players.push({ playerId, seat });
+    // Both seats full: the caller simply stays a spectator.
+  }
+
+  private strike(
+    shot: Extract<BilliardsCommand, { type: 'strike' }>['shot'],
+    playerId?: string,
+  ): void {
+    if (this.matchActive) {
+      const player = this.players.find((p) => p.playerId === playerId);
+      if (player?.seat !== this.activeSeat) {
+        throw new ForbiddenError('not this player’s turn');
+      }
+    }
     if (this.phase !== 'idle') return;
     const cue = this.game.balls.find((b) => b.id === GAME_PRESETS[this.variant].cueBallId);
     if (!cue || cue.potted) return; // must be placed back onto the table first
@@ -155,6 +195,8 @@ export class BilliardsRoomService {
     this.phase = 'idle';
     this.generation += 1;
     this.accumulatorS = 0;
+    // Fresh rack, fresh turn cycle (seated players stay seated).
+    this.activeSeat = 1;
   }
 
   private togglePause(): void {
@@ -173,6 +215,8 @@ export class BilliardsRoomService {
       this.stopLoop();
       this.phase = 'idle';
       this.accumulatorS = 0;
+      // Turn ends when every ball has come to rest.
+      if (this.matchActive) this.activeSeat = this.activeSeat === 1 ? 2 : 1;
     }
   }
 

@@ -9,7 +9,8 @@
  * machine-readable — clients must branch on `code`, never on `message`.
  */
 
-export type ApiErrorCode = 'VALIDATION_ERROR' | 'NOT_FOUND' | 'VERSION_MISMATCH' | 'INTERNAL_ERROR';
+export type ApiErrorCode =
+  'VALIDATION_ERROR' | 'NOT_FOUND' | 'FORBIDDEN' | 'VERSION_MISMATCH' | 'INTERNAL_ERROR';
 
 export interface ApiErrorBody {
   error: {

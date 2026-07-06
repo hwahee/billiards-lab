@@ -9,6 +9,7 @@ import { DEFAULT_PARAMS, type PhysicsParams } from '@shared/billiards/physics';
 
 import { useI18n } from '../i18n/locale-context';
 import { TESTID } from '../testing/testids';
+import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { Select } from '../ui/select';
@@ -126,6 +127,7 @@ export function BilliardsControls({
   const physicsSliders = hasPockets ? [...PHYSICS_SLIDERS, POCKET_SLIDER] : PHYSICS_SLIDERS;
   const cueBallId = PRESETS[sim.variant].cueBallId;
   const cueIsPotted = sim.snapshot.find((ball) => ball.id === cueBallId)?.potted ?? false;
+  const turnLocked = sim.matchActive && !sim.isMyTurn;
 
   return (
     <div className="billiards-panel">
@@ -205,11 +207,23 @@ export function BilliardsControls({
           unit="rad/s"
           onChange={(rollspin) => setShot({ ...shot, rollspin })}
         />
+        {sim.matchActive && (
+          <Badge
+            tone={sim.mySeat === null ? 'neutral' : sim.isMyTurn ? 'success' : 'warning'}
+            testId={TESTID.billiards.turnIndicator}
+          >
+            {sim.mySeat === null
+              ? t('billiards.turn.watching')
+              : sim.isMyTurn
+                ? t('billiards.turn.mine')
+                : t('billiards.turn.opponent')}
+          </Badge>
+        )}
         <div className="billiards-actions">
           <Button
             testId={TESTID.billiards.strike}
             onClick={sim.strikeCue}
-            disabled={phase !== 'idle' || cueIsPotted}
+            disabled={phase !== 'idle' || cueIsPotted || turnLocked}
           >
             {t('billiards.strike')}
           </Button>
