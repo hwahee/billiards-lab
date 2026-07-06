@@ -5,7 +5,7 @@ import type { BilliardsCommand } from '@shared/billiards/room';
 
 import { BilliardsRoomService } from './room-service';
 
-const STRIKE: BilliardsCommand = {
+const STRIKE: Extract<BilliardsCommand, { type: 'strike' }> = {
   type: 'strike',
   shot: { speed: 1.5, directionRad: 0.3, topspin: 30, sidespin: -20 },
 };
@@ -142,5 +142,110 @@ describe('ball placement', () => {
     const before = service.snapshot();
     const after = service.command({ type: 'settleIntoTray', ballId: 'white' });
     expect(after.game.balls).toEqual(before.game.balls);
+  });
+});
+
+describe('update broadcasts', () => {
+  test('every applied command emits one snapshot through onUpdate', () => {
+    const updates: number[] = [];
+    const service = new BilliardsRoomService({
+      onUpdate: (snapshot) => updates.push(snapshot.generation),
+    });
+    service.command({ type: 'reset' });
+    service.command({ type: 'variant', variant: 'pool' });
+    expect(updates).toEqual([1, 2]);
+    service.dispose();
+  });
+
+  test('a running shot streams snapshots and ends with the at-rest state', async () => {
+    const phases: string[] = [];
+    const service = new BilliardsRoomService({
+      onUpdate: (snapshot) => phases.push(snapshot.phase),
+    });
+    service.command(STRIKE);
+    await Bun.sleep(150);
+    service.dispose();
+    // The command echo plus several self-driven ticks, all still running.
+    expect(phases.length).toBeGreaterThan(2);
+    expect(phases[0]).toBe('running');
+  });
+});
+
+describe('2-player turns', () => {
+  const P1 = 'player-one-11111111';
+  const P2 = 'player-two-22222222';
+
+  function matchRoom(): BilliardsRoomService {
+    const service = new BilliardsRoomService();
+    service.command({ type: 'join', playerId: P1 });
+    service.command({ type: 'join', playerId: P2 });
+    return service;
+  }
+
+  function shootToRest(service: BilliardsRoomService, playerId: string): void {
+    service.command({ ...STRIKE, playerId });
+    service.dispose(); // detach the real timer; drive time manually
+    for (let i = 0; i < 60_000 / 250 && service.snapshot().phase === 'running'; i += 1) {
+      service.tick(250);
+    }
+    expect(service.snapshot().phase).toBe('idle');
+  }
+
+  test('join assigns seats 1 and 2 in order, idempotently; a third caller spectates', () => {
+    const service = room();
+    service.command({ type: 'join', playerId: P1 });
+    service.command({ type: 'join', playerId: P1 }); // re-join is a no-op
+    service.command({ type: 'join', playerId: P2 });
+    const late = service.command({ type: 'join', playerId: 'late-arrival-333333' });
+    expect(late.players).toEqual([
+      { playerId: P1, seat: 1 },
+      { playerId: P2, seat: 2 },
+    ]);
+    expect(late.activeSeat).toBe(1);
+  });
+
+  test('with both seats taken, only the active seat may strike', () => {
+    const service = matchRoom();
+    expect(() => service.command({ ...STRIKE, playerId: P2 })).toThrow('turn');
+    expect(() => service.command({ type: 'strike', shot: STRIKE.shot })).toThrow('turn'); // anonymous
+    expect(service.snapshot().phase).toBe('idle'); // nothing moved
+
+    expect(service.command({ ...STRIKE, playerId: P1 }).phase).toBe('running');
+    service.dispose();
+  });
+
+  test('the turn passes to the other seat once every ball rests', () => {
+    const service = matchRoom();
+    shootToRest(service, P1);
+    expect(service.snapshot().activeSeat).toBe(2);
+    expect(() => service.command({ ...STRIKE, playerId: P1 })).toThrow('turn');
+    expect(service.command({ ...STRIKE, playerId: P2 }).phase).toBe('running');
+    service.dispose();
+  });
+
+  test('without a full match, anyone may strike (free practice)', () => {
+    const service = room();
+    service.command({ type: 'join', playerId: P1 });
+    expect(service.command({ type: 'strike', shot: STRIKE.shot }).phase).toBe('running');
+    service.dispose();
+  });
+
+  test('leave frees the seat and ends turn enforcement', () => {
+    const service = matchRoom();
+    shootToRest(service, P1); // activeSeat is now 2
+    const snap = service.command({ type: 'leave', playerId: P2 });
+    expect(snap.players).toEqual([{ playerId: P1, seat: 1 }]);
+    // P1 may strike again even though seat 2 is nominally active.
+    expect(service.command({ ...STRIKE, playerId: P1 }).phase).toBe('running');
+    service.dispose();
+  });
+
+  test('re-racking keeps the players but restarts the turn cycle at seat 1', () => {
+    const service = matchRoom();
+    shootToRest(service, P1);
+    expect(service.snapshot().activeSeat).toBe(2);
+    const snap = service.command({ type: 'reset' });
+    expect(snap.players).toHaveLength(2);
+    expect(snap.activeSeat).toBe(1);
   });
 });

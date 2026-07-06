@@ -11,9 +11,13 @@
  * trajectory is the same deterministic SIM_DT sequence regardless of timer
  * jitter (the same scheme the client's render loop used before the
  * migration). When every ball is at rest the timer stops and the room goes
- * idle. `onUpdate` fires after every self-driven tick that stepped the
- * simulation — the hook the WebSocket broadcast (step 3) attaches to;
- * command results are returned to the caller directly.
+ * idle.
+ *
+ * `onUpdate` is the broadcast hook: it fires after every applied command and
+ * on self-driven ticks (throttled to BROADCAST_MS, but always on the final
+ * tick that puts the room to rest). The container wires it onto the pub/sub
+ * bus, which the /ws bridge fans out to every subscribed client — across
+ * instances with the redis driver.
  */
 import {
   advanceGameState,
@@ -25,17 +29,27 @@ import {
   type BilliardsVariant,
 } from '@shared/billiards/game-state';
 import { DEFAULT_PARAMS, isAtRest, SIM_DT, type PhysicsParams } from '@shared/billiards/physics';
-import type { BilliardsCommand, BilliardsRoomSnapshot, RoomPhase } from '@shared/billiards/room';
+import type {
+  BilliardsCommand,
+  BilliardsPlayer,
+  BilliardsRoomSnapshot,
+  PlayerSeat,
+  RoomPhase,
+} from '@shared/billiards/room';
+
+import { ForbiddenError } from '../../lib/errors';
 
 /** Self-drive timer period (ms) while a shot is in flight. */
 const TICK_MS = 20;
 /** Cap on how much wall clock one tick may consume (timer stalls, debugger). */
 const MAX_TICK_ELAPSED_MS = 250;
+/** Minimum spacing of self-driven broadcasts (the final at-rest one always goes out). */
+const BROADCAST_MS = 40;
 /** One UI "step" while paused: 1/60 s of simulation. */
 const PAUSE_STEP_STEPS = Math.round(1 / 60 / SIM_DT);
 
 export interface BilliardsRoomDeps {
-  /** Called after every self-driven tick that advanced the simulation. */
+  /** Called after every applied command and (throttled) after self-driven ticks. */
   onUpdate?: (snapshot: BilliardsRoomSnapshot) => void;
 }
 
@@ -49,6 +63,8 @@ export class BilliardsRoomService {
   private accumulatorS = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTickMs = 0;
+  private players: BilliardsPlayer[] = [];
+  private activeSeat: PlayerSeat = 1;
 
   constructor(private readonly deps: BilliardsRoomDeps = {}) {}
 
@@ -61,6 +77,8 @@ export class BilliardsRoomService {
       simSpeed: this.simSpeed,
       params: this.params,
       game: this.game,
+      players: this.players,
+      activeSeat: this.activeSeat,
     });
   }
 
@@ -73,7 +91,13 @@ export class BilliardsRoomService {
   command(command: BilliardsCommand): BilliardsRoomSnapshot {
     switch (command.type) {
       case 'strike':
-        this.strike(command.shot);
+        this.strike(command.shot, command.playerId);
+        break;
+      case 'join':
+        this.join(command.playerId);
+        break;
+      case 'leave':
+        this.players = this.players.filter((p) => p.playerId !== command.playerId);
         break;
       case 'reset':
         this.replaceGame(this.variant);
@@ -102,7 +126,11 @@ export class BilliardsRoomService {
         settleBallIntoTray(this.game, this.table, command.ballId);
         break;
     }
-    return this.snapshot();
+    const snapshot = this.snapshot();
+    // Broadcast command results too: other clients must see strikes, resets
+    // and drags, not only the self-driven ticks in between.
+    this.deps.onUpdate?.(snapshot);
+    return snapshot;
   }
 
   /**
@@ -129,7 +157,29 @@ export class BilliardsRoomService {
     return GAME_PRESETS[this.variant].table;
   }
 
-  private strike(shot: Parameters<typeof strikeBall>[2]): void {
+  /** Turn enforcement is active only while both seats are taken. */
+  private get matchActive(): boolean {
+    return this.players.length === 2;
+  }
+
+  private join(playerId: string): void {
+    if (this.players.some((p) => p.playerId === playerId)) return; // already seated
+    const taken = new Set(this.players.map((p) => p.seat));
+    const seat: PlayerSeat | null = !taken.has(1) ? 1 : !taken.has(2) ? 2 : null;
+    if (seat !== null) this.players.push({ playerId, seat });
+    // Both seats full: the caller simply stays a spectator.
+  }
+
+  private strike(
+    shot: Extract<BilliardsCommand, { type: 'strike' }>['shot'],
+    playerId?: string,
+  ): void {
+    if (this.matchActive) {
+      const player = this.players.find((p) => p.playerId === playerId);
+      if (player?.seat !== this.activeSeat) {
+        throw new ForbiddenError('not this player’s turn');
+      }
+    }
     if (this.phase !== 'idle') return;
     const cue = this.game.balls.find((b) => b.id === GAME_PRESETS[this.variant].cueBallId);
     if (!cue || cue.potted) return; // must be placed back onto the table first
@@ -145,6 +195,8 @@ export class BilliardsRoomService {
     this.phase = 'idle';
     this.generation += 1;
     this.accumulatorS = 0;
+    // Fresh rack, fresh turn cycle (seated players stay seated).
+    this.activeSeat = 1;
   }
 
   private togglePause(): void {
@@ -163,18 +215,25 @@ export class BilliardsRoomService {
       this.stopLoop();
       this.phase = 'idle';
       this.accumulatorS = 0;
+      // Turn ends when every ball has come to rest.
+      if (this.matchActive) this.activeSeat = this.activeSeat === 1 ? 2 : 1;
     }
   }
 
   private startLoop(): void {
     if (this.timer) return;
     this.lastTickMs = Date.now();
+    let lastBroadcastMs = 0;
     this.timer = setInterval(() => {
       const now = Date.now();
       const elapsed = now - this.lastTickMs;
       this.lastTickMs = now;
       this.tick(elapsed);
-      this.deps.onUpdate?.(this.snapshot());
+      // Throttle the stream, but never swallow the final at-rest snapshot.
+      if (this.phase !== 'running' || now - lastBroadcastMs >= BROADCAST_MS) {
+        lastBroadcastMs = now;
+        this.deps.onUpdate?.(this.snapshot());
+      }
     }, TICK_MS);
     // Never keep the process alive just for a rolling ball.
     this.timer.unref?.();

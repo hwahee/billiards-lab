@@ -23,6 +23,8 @@ export interface PubSub {
 export const CHANNELS = {
   /** Emitted after any todo mutation; payload: { action, todoId }. */
   todosChanged: 'todos.changed',
+  /** Emitted on every billiards room update; payload: BilliardsRoomSnapshot. */
+  billiardsUpdated: 'billiards.updated',
   /** Background job queue consumed by worker-role processes. */
   jobs: 'jobs',
 } as const;

@@ -14,6 +14,14 @@ import type { PhysicsParams } from './physics';
 
 export type RoomPhase = 'idle' | 'running' | 'paused';
 
+export type PlayerSeat = 1 | 2;
+
+/** One seated player. Carom alternates turns; ball groups can build on seats later. */
+export interface BilliardsPlayer {
+  playerId: string;
+  seat: PlayerSeat;
+}
+
 /** The full authoritative room state, as shipped to clients. */
 export interface BilliardsRoomSnapshot {
   variant: BilliardsVariant;
@@ -24,11 +32,18 @@ export interface BilliardsRoomSnapshot {
   simSpeed: number;
   params: PhysicsParams;
   game: BilliardsGameState;
+  /** Seated players (0–2). Turn enforcement is active only when both seats are taken. */
+  players: BilliardsPlayer[];
+  /** Whose turn it is (meaningful while both seats are taken). */
+  activeSeat: PlayerSeat;
 }
 
 const finite = (min: number, max: number) => s.number().check(s.gte(min), s.lte(max));
 
 const BALL_ID = s.string().check(s.minLength(1), s.maxLength(16));
+
+/** Client-generated identity (per browser tab); long enough to not collide by accident. */
+const PLAYER_ID = s.string().check(s.minLength(8), s.maxLength(64));
 
 /** Strike variables as accepted from the network — every field bounded. */
 const strikeShotSchema = s.strictObject({
@@ -63,8 +78,20 @@ const paramsSchema = s.strictObject({
  */
 export const billiardsCommandValidator = toValidator(
   s.discriminatedUnion('type', [
-    /** Strike the active preset's cue ball (idle only; refused while it is potted). */
-    s.strictObject({ type: s.literal('strike'), shot: strikeShotSchema }),
+    /**
+     * Strike the active preset's cue ball (idle only; refused while it is
+     * potted). While both seats are taken, only the active seat's player may
+     * strike — anyone else gets 403 FORBIDDEN.
+     */
+    s.strictObject({
+      type: s.literal('strike'),
+      shot: strikeShotSchema,
+      playerId: s.optional(PLAYER_ID),
+    }),
+    /** Take a free seat (idempotent). With both seats taken, the caller stays a spectator. */
+    s.strictObject({ type: s.literal('join'), playerId: PLAYER_ID }),
+    /** Give up the caller's seat; with one player left, turn enforcement ends. */
+    s.strictObject({ type: s.literal('leave'), playerId: PLAYER_ID }),
     /** Re-rack the current variant; bumps `generation`. */
     s.strictObject({ type: s.literal('reset') }),
     /** Switch carom ↔ pool (re-racks); bumps `generation`. */
@@ -90,3 +117,23 @@ export const billiardsCommandValidator = toValidator(
 );
 
 export type BilliardsCommand = Infer<typeof billiardsCommandValidator>;
+
+/**
+ * Inbound `/ws` control message: a socket asks to join/leave the billiards
+ * feed. Sockets get todo events by default but billiards snapshots only on
+ * request — the feed streams at ~25 Hz during a shot, which pages that don't
+ * render the table must not receive.
+ */
+export const wsSubscriptionValidator = toValidator(
+  s.strictObject({
+    type: s.enum(['subscribe', 'unsubscribe']),
+    channel: s.literal('billiards'),
+  }),
+);
+export type WsSubscription = Infer<typeof wsSubscriptionValidator>;
+
+/** Outbound `/ws` frame carrying one authoritative room snapshot. */
+export interface BilliardsLiveMessage {
+  channel: 'billiards';
+  snapshot: BilliardsRoomSnapshot;
+}

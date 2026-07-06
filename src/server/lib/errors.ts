@@ -8,3 +8,11 @@ export class NotFoundError extends Error {
     this.name = 'NotFoundError';
   }
 }
+
+/** The caller is known but not allowed to do this right now (e.g. not their turn). */
+export class ForbiddenError extends Error {
+  constructor(readonly reason: string) {
+    super(`forbidden: ${reason}`);
+    this.name = 'ForbiddenError';
+  }
+}

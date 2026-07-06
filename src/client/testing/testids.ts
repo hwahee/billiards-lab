@@ -52,6 +52,7 @@ export const TESTID = {
     showPrediction: 'billiards.control.show-prediction',
     ballState: (id: string) => `billiards.state.${id}`,
     eventLog: 'billiards.event-log',
+    turnIndicator: 'billiards.turn-indicator',
   },
   designSystem: {
     page: 'design-system.page',

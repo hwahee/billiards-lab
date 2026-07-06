@@ -14,7 +14,7 @@
 import type { ServerConfig } from './config';
 import { createPostgresDb, createPostgresUnitOfWork, type PostgresDb } from './db/postgres';
 import { createLogger, type Logger } from './lib/log';
-import { createPubSub, type PubSub } from './pubsub';
+import { CHANNELS, createPubSub, type PubSub } from './pubsub';
 import {
   createMemoryAuditLogRepository,
   createMemoryTodoRepository,
@@ -105,7 +105,11 @@ export function createContainer(
   let billiardsRoomCreated = false;
   const billiardsRoom = lazy(() => {
     billiardsRoomCreated = true;
-    return new BilliardsRoomService();
+    return new BilliardsRoomService({
+      // Every room update goes onto the bus; the /ws bridge fans it out to
+      // subscribed sockets (on every instance, with the redis driver).
+      onUpdate: (snapshot) => void pubsub().publish(CHANNELS.billiardsUpdated, snapshot),
+    });
   });
 
   return {

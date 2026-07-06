@@ -5,10 +5,13 @@
  * The client no longer integrates physics for the live game. Every input
  * (strike, reset, preset switch, coefficient change, pause/step, ball
  * placement) is sent to the server as a BilliardsCommand, and what the page
- * renders is the server's snapshots: applied from each command response, and
- * polled at a fixed cadence while a shot is in flight. The only physics the
- * client still runs is the strike *preview* (predictPaths on a clone), which
- * is a pure function of the last snapshot.
+ * renders is the server's snapshots, which arrive three ways: as each
+ * command's response, pushed over the `/ws` billiards feed (the server
+ * broadcasts every room update to all subscribed clients — this is how a
+ * shot struck in one browser plays back in every other), and from a slow
+ * fallback poll while a shot is in flight in case the socket is down. The
+ * only physics the client still runs is the strike *preview* (predictPaths
+ * on a clone), which is a pure function of the last snapshot.
  *
  * Rendering between snapshots: the newest two snapshots form an
  * interpolation buffer, and `interpolatedBalls(now)` renders the game a
@@ -33,13 +36,27 @@ import {
   type BallState,
   type PhysicsParams,
 } from '@shared/billiards/physics';
-import type { BilliardsCommand, BilliardsRoomSnapshot, RoomPhase } from '@shared/billiards/room';
+import type {
+  BilliardsCommand,
+  BilliardsLiveMessage,
+  BilliardsPlayer,
+  BilliardsRoomSnapshot,
+  PlayerSeat,
+  RoomPhase,
+  WsSubscription,
+} from '@shared/billiards/room';
 
 import { billiardsApi } from '../api/endpoints';
 import { DEFAULT_SHOT, toStrikeInput, type ShotSettings } from './config';
 
-/** Poll cadence while a shot is in flight (the WebSocket push replaces this in a later step). */
+/** Poll cadence while a shot is in flight and the WebSocket is down. */
 const POLL_RUNNING_MS = 80;
+/** Poll cadence while the WebSocket feed is healthy — just a safety net. */
+const POLL_FALLBACK_MS = 1000;
+/** Reconnect delay after the WebSocket drops. */
+const WS_RETRY_MS = 2000;
+/** After a local drag move, ignore pushed snapshots this long (own echoes). */
+const PLACE_ECHO_SUPPRESS_MS = 400;
 /** Rendered time sits this far behind the newest snapshot so there is always something to interpolate toward. */
 const INTERP_DELAY_MS = 170;
 /** Trailing throttle for drag → placeBall commands. */
@@ -50,6 +67,21 @@ const TUNING_DEBOUNCE_MS = 250;
 interface SnapshotFrame {
   balls: BallState[];
   atMs: number;
+}
+
+/**
+ * This tab's player identity. sessionStorage is per-tab, so two tabs of the
+ * same browser are two distinct players — which is exactly how a 2-player
+ * match is meant to be driven (and tested) locally.
+ */
+function getPlayerId(): string {
+  const KEY = 'billiards.playerId';
+  let id = sessionStorage.getItem(KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem(KEY, id);
+  }
+  return id;
 }
 
 export interface BilliardsSim {
@@ -76,11 +108,31 @@ export interface BilliardsSim {
   placeBall: (ballId: string, x: number, y: number) => void;
   /** Moves a just-captured ball to the pocketed-ball holding tray, at rest. */
   settleIntoTray: (ballId: string) => void;
+  // 2-player match state (turn enforcement is active only with both seats taken).
+  players: BilliardsPlayer[];
+  /** This tab's seat, or null while spectating / seats not yet assigned. */
+  mySeat: PlayerSeat | null;
+  activeSeat: PlayerSeat;
+  /** Both seats taken — the server enforces turns. */
+  matchActive: boolean;
+  /** False only while a match is active and it is the other player's turn. */
+  isMyTurn: boolean;
   // Render-loop interface (stable refs; no React re-renders involved).
   /** Latest authoritative game state (drag checks, pot detection). */
   gameRef: RefObject<BilliardsGameState>;
   /** Smoothed ball states for this frame; falls back to the authoritative state while not running. */
   interpolatedBalls: (nowMs: number) => readonly BallState[];
+}
+
+function isBilliardsLiveMessage(value: unknown): value is BilliardsLiveMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'channel' in value &&
+    value.channel === 'billiards' &&
+    'snapshot' in value &&
+    typeof value.snapshot === 'object'
+  );
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -110,6 +162,9 @@ export function useBilliardsSim(): BilliardsSim {
   );
   const [simTime, setSimTime] = useState(0);
   const [events, setEvents] = useState<SimEvent[]>([]);
+  const [players, setPlayers] = useState<BilliardsPlayer[]>([]);
+  const [activeSeat, setActiveSeat] = useState<PlayerSeat>(1);
+  const [playerId] = useState(getPlayerId);
 
   // Placeholder until the first server snapshot arrives (same initial rack).
   const gameRef = useRef<BilliardsGameState>(GAME_PRESETS.carom.createState());
@@ -124,9 +179,16 @@ export function useBilliardsSim(): BilliardsSim {
   const simSpeedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPlaceRef = useRef<BilliardsCommand | null>(null);
+  const wsConnectedRef = useRef(false);
+  const lastLocalPlaceMsRef = useRef(-Infinity);
+  const playersRef = useRef<BilliardsPlayer[]>([]);
+  const activeSeatRef = useRef<PlayerSeat>(1);
 
   const applySnapshot = useCallback((snap: BilliardsRoomSnapshot) => {
     const generationChanged = snap.generation !== generationRef.current;
+    // Drop out-of-order frames (poll responses racing WS pushes, redis
+    // fan-out): within one generation the sim clock only moves forward.
+    if (!generationChanged && snap.game.simTime < gameRef.current.simTime) return;
     generationRef.current = snap.generation;
     gameRef.current = snap.game;
     variantRef.current = snap.variant;
@@ -148,6 +210,10 @@ export function useBilliardsSim(): BilliardsSim {
     setSnapshot(cloneBalls(snap.game.balls));
     setSimTime(snap.game.simTime);
     setEvents(snap.game.events);
+    playersRef.current = snap.players;
+    activeSeatRef.current = snap.activeSeat;
+    setPlayers(snap.players);
+    setActiveSeat(snap.activeSeat);
   }, []);
 
   const runCommand = useCallback(
@@ -163,7 +229,8 @@ export function useBilliardsSim(): BilliardsSim {
     [applySnapshot],
   );
 
-  // Initial snapshot on mount, then keep polling while a shot is in flight.
+  // Initial snapshot on mount, then keep polling while a shot is in flight —
+  // slowly while the WebSocket feed is healthy (safety net), fast when not.
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -175,7 +242,10 @@ export function useBilliardsSim(): BilliardsSim {
         console.error('billiards snapshot failed', error);
       }
       if (!cancelled && phaseRef.current === 'running') {
-        timer = setTimeout(() => void poll(), POLL_RUNNING_MS);
+        timer = setTimeout(
+          () => void poll(),
+          wsConnectedRef.current ? POLL_FALLBACK_MS : POLL_RUNNING_MS,
+        );
       }
     };
     void poll();
@@ -186,14 +256,78 @@ export function useBilliardsSim(): BilliardsSim {
     // `phase` re-arms the chain whenever a command flips the room's phase.
   }, [applySnapshot, phase]);
 
+  // Live feed: the server pushes every room update over /ws (fan-out crosses
+  // instances via pub/sub), so shots struck by OTHER clients play back here
+  // without any polling. Reconnects with a fixed backoff while mounted.
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let unmounted = false;
+
+    const connect = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
+      socket.onopen = () => {
+        wsConnectedRef.current = true;
+        const subscribe: WsSubscription = { type: 'subscribe', channel: 'billiards' };
+        socket?.send(JSON.stringify(subscribe));
+      };
+      socket.onmessage = (event) => {
+        let message: unknown;
+        try {
+          message = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+        if (!isBilliardsLiveMessage(message)) return;
+        // Our own drag echoes arrive slightly stale; local state is ahead.
+        if (performance.now() - lastLocalPlaceMsRef.current < PLACE_ECHO_SUPPRESS_MS) return;
+        applySnapshot(message.snapshot);
+      };
+      socket.onclose = () => {
+        wsConnectedRef.current = false;
+        if (!unmounted) retryTimer = setTimeout(connect, WS_RETRY_MS);
+      };
+    };
+
+    connect();
+    return () => {
+      unmounted = true;
+      wsConnectedRef.current = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      socket?.close();
+    };
+  }, [applySnapshot]);
+
+  // Take a seat as soon as the page is up (idempotent server-side), and give
+  // it up when the tab goes away. `keepalive` lets the leave outlive the
+  // page; SPA navigation keeps the seat — the identity survives per tab.
+  useEffect(() => {
+    runCommand({ type: 'join', playerId });
+    const onPageHide = () => {
+      void fetch('/api/billiards', {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'leave', playerId } satisfies BilliardsCommand),
+      }).catch(() => undefined);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [playerId, runCommand]);
+
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
+    if (playersRef.current.length === 2) {
+      const me = playersRef.current.find((p) => p.playerId === playerId);
+      if (me?.seat !== activeSeatRef.current) return; // not our turn (server would 403 anyway)
+    }
     const cue = gameRef.current.balls.find(
       (b) => b.id === GAME_PRESETS[variantRef.current].cueBallId,
     );
     if (!cue || cue.potted) return; // must be dragged back onto the table first
-    runCommand({ type: 'strike', shot: toStrikeInput(shot) });
-  }, [shot, runCommand]);
+    runCommand({ type: 'strike', shot: toStrikeInput(shot), playerId });
+  }, [shot, runCommand, playerId]);
 
   const reset = useCallback(() => runCommand({ type: 'reset' }), [runCommand]);
 
@@ -246,6 +380,7 @@ export function useBilliardsSim(): BilliardsSim {
     const table = GAME_PRESETS[variantRef.current].table;
     const changed = placeBallInState(gameRef.current, table, physicsRef.current, ballId, x, y);
     if (!changed) return;
+    lastLocalPlaceMsRef.current = performance.now();
     setSnapshot(cloneBalls(gameRef.current.balls));
 
     pendingPlaceRef.current = { type: 'placeBall', ballId, x, y };
@@ -327,6 +462,12 @@ export function useBilliardsSim(): BilliardsSim {
     stepOnce,
     placeBall,
     settleIntoTray,
+    players,
+    mySeat: players.find((p) => p.playerId === playerId)?.seat ?? null,
+    activeSeat,
+    matchActive: players.length === 2,
+    isMyTurn:
+      players.length < 2 || players.find((p) => p.playerId === playerId)?.seat === activeSeat,
     gameRef,
     interpolatedBalls,
   };
