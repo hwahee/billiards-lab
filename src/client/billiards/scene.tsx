@@ -5,9 +5,10 @@
  * y-up, so a point maps as (x, y) → [x, height, −y] — a proper rotation, so
  * the orientation quaternion maps the same way: (x, y, z, w) → (x, z, −y, w).
  *
- * The physics runs on the SERVER; the frame loop (inside <BallMeshes/>) only
- * renders `sim.interpolatedBalls(now)` — the authoritative snapshots smoothed
- * over time. The table itself (dimensions, pocket mouths) and the ball set
+ * The live game is owned by the SERVER, but the rolling balls are REPLAYED
+ * locally: the frame loop (inside <BallMeshes/>) renders `sim.renderBalls
+ * (now)`, which advances the deterministic engine on this machine between
+ * the server's strike echo and its at-rest snapshot. The table itself (dimensions, pocket mouths) and the ball set
  * both follow the active preset (carom vs. pool), so both re-render whenever
  * it changes.
  *
@@ -217,7 +218,7 @@ function BallMeshes({
 
   useFrame((_, delta) => {
     const table = preset.table;
-    for (const ball of sim.interpolatedBalls(performance.now())) {
+    for (const ball of sim.renderBalls(performance.now())) {
       const mesh = meshRefs.current.get(ball.id);
       if (!mesh) continue;
 

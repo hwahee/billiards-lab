@@ -78,35 +78,34 @@ async function openFeedSocket(): Promise<FeedSocket> {
   };
 }
 
-async function strike(): Promise<void> {
+async function strike(speed = 2): Promise<void> {
   const response = await fetch(`${baseUrl}/api/billiards`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       type: 'strike',
-      shot: { speed: 2, directionRad: 0.25, topspin: 0, sidespin: 0 },
+      shot: { speed, directionRad: 0.25, topspin: 0, sidespin: 0 },
     }),
   });
   expect(response.status).toBe(200);
 }
 
 describe('billiards live feed', () => {
-  test('a subscribed socket streams snapshots for a shot struck over HTTP', async () => {
+  test('a whole shot produces exactly two frames: the strike echo and the at-rest state', async () => {
     const feed = await openFeedSocket();
     feed.send({ type: 'subscribe', channel: 'billiards' });
     await Bun.sleep(30); // let the subscription land before the strike
 
-    await strike();
-    await Bun.sleep(300);
+    await strike(0.05); // gentle: rests in well under a second
+    for (let i = 0; i < 40 && feed.frames.length < 2; i += 1) await Bun.sleep(100);
+    await Bun.sleep(200); // room for any extra (unwanted) frames to arrive
     feed.close();
 
-    expect(feed.frames.length).toBeGreaterThan(3);
-    expect(feed.frames[0]!.snapshot.phase).toBe('running');
-    // The sim clock must be non-decreasing across pushed frames.
-    const times = feed.frames.map((f) => f.snapshot.game.simTime);
-    for (let i = 1; i < times.length; i += 1) {
-      expect(times[i]!).toBeGreaterThanOrEqual(times[i - 1]!);
-    }
+    // No mid-roll streaming: clients replay the deterministic trajectory
+    // locally, so the server sends only the start and the authoritative end.
+    expect(feed.frames.map((f) => f.snapshot.phase)).toEqual(['running', 'idle']);
+    expect(feed.frames[0]!.snapshot.game.simTime).toBe(0);
+    expect(feed.frames[1]!.snapshot.game.simTime).toBeGreaterThan(0);
   });
 
   test('a socket that never subscribed receives no billiards frames', async () => {
