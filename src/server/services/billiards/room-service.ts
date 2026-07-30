@@ -13,11 +13,16 @@
  * migration). When every ball is at rest the timer stops and the room goes
  * idle.
  *
- * `onUpdate` is the broadcast hook: it fires after every applied command and
- * on self-driven ticks (throttled to BROADCAST_MS, but always on the final
- * tick that puts the room to rest). The container wires it onto the pub/sub
- * bus, which the /ws bridge fans out to every subscribed client — across
- * instances with the redis driver.
+ * `onUpdate` is the broadcast hook, and it deliberately does NOT stream the
+ * rolling balls. Because the engine is deterministic, a client that receives
+ * the post-strike snapshot can replay the identical trajectory locally, so a
+ * shot needs exactly two broadcasts: the command echo that starts it
+ * (phase `running`, velocities set) and the at-rest snapshot when the room
+ * settles (authoritative final positions + the turn flip). Every other
+ * applied command still echoes a snapshot — mid-shot mutations (params,
+ * pause/step, tray settling) rebase the clients' local replays. The
+ * container wires the hook onto the pub/sub bus, which the /ws bridge fans
+ * out to every subscribed client — across instances with the redis driver.
  */
 import {
   advanceGameState,
@@ -43,13 +48,11 @@ import { ForbiddenError } from '../../lib/errors';
 const TICK_MS = 20;
 /** Cap on how much wall clock one tick may consume (timer stalls, debugger). */
 const MAX_TICK_ELAPSED_MS = 250;
-/** Minimum spacing of self-driven broadcasts (the final at-rest one always goes out). */
-const BROADCAST_MS = 40;
 /** One UI "step" while paused: 1/60 s of simulation. */
 const PAUSE_STEP_STEPS = Math.round(1 / 60 / SIM_DT);
 
 export interface BilliardsRoomDeps {
-  /** Called after every applied command and (throttled) after self-driven ticks. */
+  /** Called after every applied command and once when a shot comes to rest. */
   onUpdate?: (snapshot: BilliardsRoomSnapshot) => void;
 }
 
@@ -217,23 +220,21 @@ export class BilliardsRoomService {
       this.accumulatorS = 0;
       // Turn ends when every ball has come to rest.
       if (this.matchActive) this.activeSeat = this.activeSeat === 1 ? 2 : 1;
+      // The shot-ended broadcast: authoritative final state + the turn flip.
+      this.deps.onUpdate?.(this.snapshot());
     }
   }
 
   private startLoop(): void {
     if (this.timer) return;
     this.lastTickMs = Date.now();
-    let lastBroadcastMs = 0;
     this.timer = setInterval(() => {
       const now = Date.now();
       const elapsed = now - this.lastTickMs;
       this.lastTickMs = now;
+      // No per-tick broadcasts: clients replay the deterministic trajectory
+      // locally; advance() emits the single at-rest snapshot when it ends.
       this.tick(elapsed);
-      // Throttle the stream, but never swallow the final at-rest snapshot.
-      if (this.phase !== 'running' || now - lastBroadcastMs >= BROADCAST_MS) {
-        lastBroadcastMs = now;
-        this.deps.onUpdate?.(this.snapshot());
-      }
     }, TICK_MS);
     // Never keep the process alive just for a rolling ball.
     this.timer.unref?.();

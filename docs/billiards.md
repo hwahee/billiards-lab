@@ -13,21 +13,21 @@ played back in 3D. Because the engine is a fixed-timestep pure function, the
 
 ## Where things live
 
-| Piece                                                         | Path                                            |
-| ------------------------------------------------------------- | ----------------------------------------------- |
-| Physics engine (pure TS, no rendering deps), incl. pockets    | `src/shared/billiards/physics.ts`               |
-| Engine tests (determinism, draw/follow, cushions, pockets)    | `src/shared/billiards/physics.test.ts`          |
-| Serializable game state, presets, placement, tray             | `src/shared/billiards/game-state.ts`            |
-| Game-state tests (JSON round-trip, collision log, rack)       | `src/shared/billiards/game-state.test.ts`       |
-| Room wire protocol (snapshot type, command validators)        | `src/shared/billiards/room.ts`                  |
-| Server-authoritative room service (owns state, tick loop)     | `src/server/services/billiards/room-service.ts` |
-| Room HTTP surface (`GET`/`POST /api/billiards`)               | `src/server/routes/billiards.ts`                |
-| Room integration tests (over HTTP)                            | `src/server/http/billiards.integration.test.ts` |
-| Presentation config (ball specs/colours, default shot)        | `src/client/billiards/config.ts`                |
-| Client room state (commands, polling, snapshot interpolation) | `src/client/billiards/use-billiards.ts`         |
-| 3D scene (table, pockets, balls, prediction lines)            | `src/client/billiards/scene.tsx`                |
-| Control panel (incl. preset selector)                         | `src/client/billiards/controls.tsx`             |
-| Page                                                          | `src/client/pages/billiards-page.tsx`           |
+| Piece                                                      | Path                                            |
+| ---------------------------------------------------------- | ----------------------------------------------- |
+| Physics engine (pure TS, no rendering deps), incl. pockets | `src/shared/billiards/physics.ts`               |
+| Engine tests (determinism, draw/follow, cushions, pockets) | `src/shared/billiards/physics.test.ts`          |
+| Serializable game state, presets, placement, tray          | `src/shared/billiards/game-state.ts`            |
+| Game-state tests (JSON round-trip, collision log, rack)    | `src/shared/billiards/game-state.test.ts`       |
+| Room wire protocol (snapshot type, command validators)     | `src/shared/billiards/room.ts`                  |
+| Server-authoritative room service (owns state, tick loop)  | `src/server/services/billiards/room-service.ts` |
+| Room HTTP surface (`GET`/`POST /api/billiards`)            | `src/server/routes/billiards.ts`                |
+| Room integration tests (over HTTP)                         | `src/server/http/billiards.integration.test.ts` |
+| Presentation config (ball specs/colours, default shot)     | `src/client/billiards/config.ts`                |
+| Client room state (commands, local shot replay)            | `src/client/billiards/use-billiards.ts`         |
+| 3D scene (table, pockets, balls, prediction lines)         | `src/client/billiards/scene.tsx`                |
+| Control panel (incl. preset selector)                      | `src/client/billiards/controls.tsx`             |
+| Page                                                       | `src/client/pages/billiards-page.tsx`           |
 
 ## Server-authoritative architecture
 
@@ -45,27 +45,39 @@ the full authoritative `BilliardsRoomSnapshot`. Commands illegal in the
 current phase (strike while running, …) are server-side no-ops that still
 return the authoritative state.
 
-Realtime fan-out: every room update — command results and (throttled to
-~25 Hz) self-driven ticks — goes onto the pub/sub bus
-(`CHANNELS.billiardsUpdated`), and the `/ws` bridge publishes it to the
+Realtime fan-out: room updates go onto the pub/sub bus
+(`CHANNELS.billiardsUpdated`), and the `/ws` bridge publishes them to the
 `ws.billiards` topic; with `PUBSUB_DRIVER=redis` this crosses instances, so
 sockets connected anywhere see shots struck anywhere. The billiards feed is
 strictly opt-in per socket (`{type:'subscribe',channel:'billiards'}` over
 `/ws`, validated) because pages that don't render the table — e.g. Todos,
-which invalidates queries on every `/ws` message — must not receive a 25 Hz
-stream.
+which invalidates queries on every `/ws` message — must not receive it.
 
-Rendering: the client applies snapshots from three sources — each command
-response, the `/ws` push feed, and a fallback poll while `running` (slow
-when the socket is healthy, ~12 Hz when it is down) — dropping out-of-order
-frames by sim clock. It draws `interpolatedBalls(now)`: a render-only
-smoothing that lerps positions and nlerps orientation quaternions between
-the two newest snapshots, a fixed delay behind the server. Drags apply
-locally first (the same shared placement rules), sync on a trailing
-throttle, and briefly ignore pushed snapshots (own echoes), so the pointer
-never fights the authority. The strike _preview_ (`predictPaths`) still
-runs client-side — it is a pure function of the last snapshot, not the live
-game.
+**The rolling balls are not streamed.** Because the engine is
+deterministic, a whole shot needs exactly two broadcasts: the strike echo
+(phase `running`, velocities just set — the initial conditions) and the
+at-rest snapshot (authoritative final positions + the turn flip), emitted
+by the room the moment every ball rests. Cross-engine floating point
+(Bun/JSC vs. V8) agrees to ~1e-15 m over a full break shot, so a client
+can replay the identical trajectory locally.
+
+Rendering (input replication / local replay): each client adopts arriving
+snapshots — command echoes, `/ws` pushes, and a watchdog poll while
+`running` (~0.7 Hz with a healthy socket, 4 Hz without) — and, while the
+phase is `running`, advances the same fixed-step engine locally from the
+adopted state inside the frame loop (`renderBalls(now)`), giving full
+600 Hz smoothness with zero streaming latency. Reconciliation rules: a
+running snapshot behind the local replay clock (params change, tray
+settling, poll response) is adopted and fast-forwarded to the local clock —
+deterministic, hence seamless; one ahead of it is adopted as-is (a skip
+bounded by one network latency, only when a mid-shot command occurred); the
+at-rest snapshot is held until the local replay reaches rest (or it lags by
+more than one second), so the tail of the shot plays out before the
+invisible ~1e-15 m correction. Drags apply locally first (the same shared
+placement rules), sync on a trailing throttle, and briefly ignore pushed
+snapshots (own echoes), so the pointer never fights the authority. The
+strike _preview_ (`predictPaths`) also runs client-side — like the replay,
+it is a pure function of the last snapshot.
 
 ## 2-player turns
 

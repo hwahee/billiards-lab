@@ -2,27 +2,37 @@
  * State container for the billiards page — a CLIENT of the
  * server-authoritative room (src/server/services/billiards).
  *
- * The client no longer integrates physics for the live game. Every input
- * (strike, reset, preset switch, coefficient change, pause/step, ball
- * placement) is sent to the server as a BilliardsCommand, and what the page
- * renders is the server's snapshots, which arrive three ways: as each
- * command's response, pushed over the `/ws` billiards feed (the server
- * broadcasts every room update to all subscribed clients — this is how a
- * shot struck in one browser plays back in every other), and from a slow
- * fallback poll while a shot is in flight in case the socket is down. The
- * only physics the client still runs is the strike *preview* (predictPaths
- * on a clone), which is a pure function of the last snapshot.
+ * Inputs still go to the server as BilliardsCommands, but the rolling balls
+ * are no longer streamed back: the engine is deterministic, so this client
+ * REPLAYS the shot locally. A shot needs exactly two broadcasts from the
+ * server — the strike echo (initial conditions: velocities/spins just set)
+ * and the at-rest snapshot (authoritative final positions + turn flip).
+ * Between the two, `renderBalls(now)` advances the same fixed-step engine at
+ * full 600 Hz on this machine, which is what makes the motion perfectly
+ * smooth and latency-free after the start.
  *
- * Rendering between snapshots: the newest two snapshots form an
- * interpolation buffer, and `interpolatedBalls(now)` renders the game a
- * fixed delay behind the newest one (position lerp + orientation nlerp), so
- * ~12 Hz polling still looks like continuous 60 fps motion. While the room
- * is idle/paused the authoritative state is rendered directly — drags and
- * tray moves must feel immediate.
+ * Reconciliation rules for arriving snapshots (command echoes, /ws pushes,
+ * the watchdog poll):
+ *  - running snapshot at/behind our local replay clock → adopt it and
+ *    fast-forward to the local clock (deterministic, so this is seamless);
+ *    this is how mid-shot mutations (params change, tray settling) rebase
+ *    the replay without a visual jump.
+ *  - running snapshot ahead of our clock (its command was applied at server
+ *    time) → adopt as-is; the forward skip is bounded by one network
+ *    latency and only happens when a mid-shot command occurred.
+ *  - at-rest snapshot while our replay is still rolling → held as "pending
+ *    final" and adopted the moment the local replay rests, so the tail of
+ *    the shot isn't cut off; engines differ by ~1e-15 m, so the correcting
+ *    snap is invisible. If the replay has fallen far behind (hidden tab),
+ *    it is adopted immediately instead.
+ *
+ * The strike *preview* (predictPaths) also stays client-side — like the
+ * replay, it is a pure function of the last snapshot.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
 import {
+  advanceGameState,
   GAME_PRESETS,
   placeBall as placeBallInState,
   settleBallIntoTray,
@@ -33,6 +43,8 @@ import {
 import {
   cloneBalls,
   DEFAULT_PARAMS,
+  isAtRest,
+  SIM_DT,
   type BallState,
   type PhysicsParams,
 } from '@shared/billiards/physics';
@@ -49,25 +61,22 @@ import type {
 import { billiardsApi } from '../api/endpoints';
 import { DEFAULT_SHOT, toStrikeInput, type ShotSettings } from './config';
 
-/** Poll cadence while a shot is in flight and the WebSocket is down. */
-const POLL_RUNNING_MS = 80;
-/** Poll cadence while the WebSocket feed is healthy — just a safety net. */
-const POLL_FALLBACK_MS = 1000;
+/** Watchdog poll while a shot is in flight and the WebSocket is down. */
+const POLL_RUNNING_MS = 250;
+/** Watchdog poll while the socket is healthy — belt and braces only. */
+const POLL_FALLBACK_MS = 1500;
 /** Reconnect delay after the WebSocket drops. */
 const WS_RETRY_MS = 2000;
 /** After a local drag move, ignore pushed snapshots this long (own echoes). */
 const PLACE_ECHO_SUPPRESS_MS = 400;
-/** Rendered time sits this far behind the newest snapshot so there is always something to interpolate toward. */
-const INTERP_DELAY_MS = 170;
+/** Cap on one render frame's worth of replay (background tab throttling). */
+const MAX_FRAME_DELTA_S = 0.25;
+/** If the local replay lags the final snapshot by more than this, snap to it. */
+const REPLAY_MAX_LAG_S = 1;
 /** Trailing throttle for drag → placeBall commands. */
 const PLACE_SYNC_MS = 120;
 /** Debounce for slider → params / simSpeed commands. */
 const TUNING_DEBOUNCE_MS = 250;
-
-interface SnapshotFrame {
-  balls: BallState[];
-  atMs: number;
-}
 
 /**
  * This tab's player identity. sessionStorage is per-tab, so two tabs of the
@@ -118,10 +127,14 @@ export interface BilliardsSim {
   /** False only while a match is active and it is the other player's turn. */
   isMyTurn: boolean;
   // Render-loop interface (stable refs; no React re-renders involved).
-  /** Latest authoritative game state (drag checks, pot detection). */
+  /** Latest local game state (drag checks, pot detection). */
   gameRef: RefObject<BilliardsGameState>;
-  /** Smoothed ball states for this frame; falls back to the authoritative state while not running. */
-  interpolatedBalls: (nowMs: number) => readonly BallState[];
+  /**
+   * The balls to draw this frame. While a shot is in flight this ADVANCES
+   * the local deterministic replay by the elapsed wall clock, so it must be
+   * called exactly once per rendered frame.
+   */
+  renderBalls: (nowMs: number) => readonly BallState[];
 }
 
 function isBilliardsLiveMessage(value: unknown): value is BilliardsLiveMessage {
@@ -133,21 +146,6 @@ function isBilliardsLiveMessage(value: unknown): value is BilliardsLiveMessage {
     'snapshot' in value &&
     typeof value.snapshot === 'object'
   );
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-/** Normalized lerp between unit quaternions — shortest arc, good enough for one snapshot interval. */
-function nlerpQuat(a: BallState['orientation'], b: BallState['orientation'], t: number) {
-  const sign = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w < 0 ? -1 : 1;
-  const x = lerp(a.x * sign, b.x, t);
-  const y = lerp(a.y * sign, b.y, t);
-  const z = lerp(a.z * sign, b.z, t);
-  const w = lerp(a.w * sign, b.w, t);
-  const n = Math.hypot(x, y, z, w) || 1;
-  return { x: x / n, y: y / n, z: z / n, w: w / n };
 }
 
 export function useBilliardsSim(): BilliardsSim {
@@ -172,9 +170,15 @@ export function useBilliardsSim(): BilliardsSim {
   const phaseRef = useRef<RoomPhase>('idle');
   const physicsRef = useRef(physics);
   const generationRef = useRef(0);
-  const prevFrameRef = useRef<SnapshotFrame | null>(null);
-  const currFrameRef = useRef<SnapshotFrame | null>(null);
-  // While a slider edit is waiting to be sent, poll responses must not undo it.
+  // Local replay bookkeeping. The replay must run with the coefficients the
+  // SERVER used for this shot (replayParamsRef), not with unsent local
+  // slider edits (physicsRef) — those only apply once the server echoes them.
+  const replayParamsRef = useRef<PhysicsParams>(DEFAULT_PARAMS);
+  const replaySimSpeedRef = useRef(1);
+  const replayAccumulatorRef = useRef(0);
+  const replayClockMsRef = useRef<number | null>(null);
+  const pendingFinalRef = useRef<BilliardsRoomSnapshot | null>(null);
+  // While a slider edit is waiting to be sent, snapshots must not undo it.
   const paramsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const simSpeedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -184,20 +188,31 @@ export function useBilliardsSim(): BilliardsSim {
   const playersRef = useRef<BilliardsPlayer[]>([]);
   const activeSeatRef = useRef<PlayerSeat>(1);
 
-  const applySnapshot = useCallback((snap: BilliardsRoomSnapshot) => {
+  /** Unconditionally makes `snap` the local truth (with the rebase rule). */
+  const adoptSnapshot = useCallback((snap: BilliardsRoomSnapshot) => {
     const generationChanged = snap.generation !== generationRef.current;
-    // Drop out-of-order frames (poll responses racing WS pushes, redis
-    // fan-out): within one generation the sim clock only moves forward.
-    if (!generationChanged && snap.game.simTime < gameRef.current.simTime) return;
+    const localSimTime = gameRef.current.simTime;
+
+    pendingFinalRef.current = null;
     generationRef.current = snap.generation;
     gameRef.current = snap.game;
     variantRef.current = snap.variant;
     phaseRef.current = snap.phase;
+    replayParamsRef.current = snap.params;
+    replaySimSpeedRef.current = snap.simSpeed;
+    replayAccumulatorRef.current = 0;
 
-    // Interpolation buffer: never tween across a re-rack.
-    const now = performance.now();
-    prevFrameRef.current = generationChanged ? null : currFrameRef.current;
-    currFrameRef.current = { balls: snap.game.balls, atMs: now };
+    // Rebase: a running snapshot behind our replay clock (params change,
+    // tray settle, watchdog poll response) is fast-forwarded to the local
+    // clock — deterministic, so the rendered balls don't move.
+    if (!generationChanged && snap.phase === 'running' && localSimTime > snap.game.simTime) {
+      advanceGameState(
+        gameRef.current,
+        GAME_PRESETS[snap.variant].table,
+        snap.params,
+        Math.round((localSimTime - snap.game.simTime) / SIM_DT),
+      );
+    }
 
     setVariantState(snap.variant);
     setPhaseState(snap.phase);
@@ -207,14 +222,63 @@ export function useBilliardsSim(): BilliardsSim {
       setPhysicsState(snap.params);
     }
     if (!simSpeedTimerRef.current) setSimSpeedState(snap.simSpeed);
-    setSnapshot(cloneBalls(snap.game.balls));
-    setSimTime(snap.game.simTime);
-    setEvents(snap.game.events);
+    setSnapshot(cloneBalls(gameRef.current.balls));
+    setSimTime(gameRef.current.simTime);
+    setEvents(gameRef.current.events);
     playersRef.current = snap.players;
     activeSeatRef.current = snap.activeSeat;
     setPlayers(snap.players);
     setActiveSeat(snap.activeSeat);
   }, []);
+
+  const applySnapshot = useCallback(
+    (snap: BilliardsRoomSnapshot, options: { fromWatchdog?: boolean } = {}) => {
+      const generationChanged = snap.generation !== generationRef.current;
+      const localSimTime = gameRef.current.simTime;
+
+      // The shot-ended snapshot is what we are waiting for while locally
+      // running — it must NEVER be dropped as stale (batch granularity can
+      // leave the local clock slightly past the server's rest time). Hold it
+      // only while the tail of the shot is still playing out ahead of us;
+      // adopt it at once when the local replay already rests, has passed the
+      // final's clock, or has fallen far behind (throttled background tab).
+      if (!generationChanged && phaseRef.current === 'running' && snap.phase === 'idle') {
+        const stillRolling = !isAtRest(gameRef.current.balls, replayParamsRef.current);
+        const finalIsAhead = snap.game.simTime > localSimTime;
+        if (stillRolling && finalIsAhead && snap.game.simTime - localSimTime <= REPLAY_MAX_LAG_S) {
+          pendingFinalRef.current = snap;
+          return;
+        }
+        adoptSnapshot(snap);
+        return;
+      }
+
+      // Out-of-order idle/paused frames (poll racing WS) are stale — drop
+      // them. Running frames behind our clock are fine: adopt + fast-forward.
+      if (!generationChanged && snap.phase !== 'running' && snap.game.simTime < localSimTime) {
+        return;
+      }
+
+      // Watchdog polls carry no command we don't already know about, so a
+      // running frame slightly AHEAD of our replay (the server always leads
+      // by one network latency) must not be adopted — that would skip the
+      // replay forward every poll. Only catch up when we fell far behind
+      // (throttled background tab).
+      if (
+        options.fromWatchdog &&
+        !generationChanged &&
+        snap.phase === 'running' &&
+        phaseRef.current === 'running' &&
+        snap.game.simTime > localSimTime &&
+        snap.game.simTime - localSimTime < REPLAY_MAX_LAG_S
+      ) {
+        return;
+      }
+
+      adoptSnapshot(snap);
+    },
+    [adoptSnapshot],
+  );
 
   const runCommand = useCallback(
     (command: BilliardsCommand) => {
@@ -229,15 +293,16 @@ export function useBilliardsSim(): BilliardsSim {
     [applySnapshot],
   );
 
-  // Initial snapshot on mount, then keep polling while a shot is in flight —
-  // slowly while the WebSocket feed is healthy (safety net), fast when not.
+  // Initial snapshot on mount, plus a watchdog poll while a shot is in
+  // flight: rendering never depends on it (the replay is local), it only
+  // guarantees the final state / turn flip land even if the socket is down.
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       try {
         const snap = await billiardsApi.snapshot();
-        if (!cancelled) applySnapshot(snap);
+        if (!cancelled) applySnapshot(snap, { fromWatchdog: true });
       } catch (error) {
         console.error('billiards snapshot failed', error);
       }
@@ -256,9 +321,10 @@ export function useBilliardsSim(): BilliardsSim {
     // `phase` re-arms the chain whenever a command flips the room's phase.
   }, [applySnapshot, phase]);
 
-  // Live feed: the server pushes every room update over /ws (fan-out crosses
-  // instances via pub/sub), so shots struck by OTHER clients play back here
-  // without any polling. Reconnects with a fixed backoff while mounted.
+  // Live feed: the server pushes room updates over /ws (fan-out crosses
+  // instances via pub/sub). For a shot that is exactly two frames — the
+  // strike echo that starts our local replay and the authoritative at-rest
+  // state. Reconnects with a fixed backoff while mounted.
   useEffect(() => {
     let socket: WebSocket | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -316,6 +382,17 @@ export function useBilliardsSim(): BilliardsSim {
     return () => window.removeEventListener('pagehide', onPageHide);
   }, [playerId, runCommand]);
 
+  // Refresh the readouts (speeds, sim clock) from the local replay at a low
+  // frequency while a shot is in flight.
+  useEffect(() => {
+    if (phase !== 'running') return;
+    const timer = setInterval(() => {
+      setSnapshot(cloneBalls(gameRef.current.balls));
+      setSimTime(gameRef.current.simTime);
+    }, 150);
+    return () => clearInterval(timer);
+  }, [phase]);
+
   const strikeCue = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
     if (playersRef.current.length === 2) {
@@ -344,7 +421,8 @@ export function useBilliardsSim(): BilliardsSim {
   }, [runCommand]);
 
   // Coefficient sliders fire on every drag tick: reflect locally at once
-  // (the prediction overlay reads `physics`), send debounced.
+  // (the prediction overlay reads `physics`), send debounced. The live
+  // replay keeps the server's coefficients until the echo comes back.
   const setPhysics = useCallback(
     (next: PhysicsParams) => {
       physicsRef.current = next;
@@ -408,30 +486,35 @@ export function useBilliardsSim(): BilliardsSim {
     [runCommand],
   );
 
-  const interpolatedBalls = useCallback((nowMs: number): readonly BallState[] => {
-    if (phaseRef.current !== 'running') return gameRef.current.balls;
-    const curr = currFrameRef.current;
-    if (!curr) return gameRef.current.balls;
-    const prev = prevFrameRef.current;
-    if (!prev || curr.atMs <= prev.atMs) return curr.balls;
+  const renderBalls = useCallback(
+    (nowMs: number): readonly BallState[] => {
+      const last = replayClockMsRef.current;
+      replayClockMsRef.current = nowMs;
 
-    const t = Math.min(
-      1,
-      Math.max(0, (nowMs - INTERP_DELAY_MS - prev.atMs) / (curr.atMs - prev.atMs)),
-    );
-    return curr.balls.map((ball) => {
-      const before = prev.balls.find((b) => b.id === ball.id);
-      if (!before || ball.potted || before.potted) return ball;
-      return {
-        ...ball,
-        position: {
-          x: lerp(before.position.x, ball.position.x, t),
-          y: lerp(before.position.y, ball.position.y, t),
-        },
-        orientation: nlerpQuat(before.orientation, ball.orientation, t),
-      };
-    });
-  }, []);
+      if (phaseRef.current === 'running' && last !== null) {
+        const game = gameRef.current;
+        if (isAtRest(game.balls, replayParamsRef.current)) {
+          // Local replay finished: freeze the clock and reconcile with the
+          // server's final state (the correction is ~1e-15 m — invisible).
+          // Until it arrives, hold; the /ws push or watchdog poll delivers it.
+          const final = pendingFinalRef.current;
+          if (final) adoptSnapshot(final);
+        } else {
+          const deltaS = Math.min((nowMs - last) / 1000, MAX_FRAME_DELTA_S);
+          replayAccumulatorRef.current += deltaS * replaySimSpeedRef.current;
+          const steps = Math.floor(replayAccumulatorRef.current / SIM_DT);
+          if (steps > 0) {
+            replayAccumulatorRef.current -= steps * SIM_DT;
+            const table = GAME_PRESETS[variantRef.current].table;
+            const logged = advanceGameState(game, table, replayParamsRef.current, steps);
+            if (logged.length > 0) setEvents([...game.events]);
+          }
+        }
+      }
+      return gameRef.current.balls;
+    },
+    [adoptSnapshot],
+  );
 
   // Flush/cancel timers on unmount.
   useEffect(() => {
@@ -469,6 +552,6 @@ export function useBilliardsSim(): BilliardsSim {
     isMyTurn:
       players.length < 2 || players.find((p) => p.playerId === playerId)?.seat === activeSeat,
     gameRef,
-    interpolatedBalls,
+    renderBalls,
   };
 }

@@ -157,17 +157,18 @@ describe('update broadcasts', () => {
     service.dispose();
   });
 
-  test('a running shot streams snapshots and ends with the at-rest state', async () => {
+  test('a whole shot broadcasts exactly twice: the strike echo and the at-rest state', () => {
     const phases: string[] = [];
     const service = new BilliardsRoomService({
       onUpdate: (snapshot) => phases.push(snapshot.phase),
     });
-    service.command(STRIKE);
-    await Bun.sleep(150);
-    service.dispose();
-    // The command echo plus several self-driven ticks, all still running.
-    expect(phases.length).toBeGreaterThan(2);
-    expect(phases[0]).toBe('running');
+    service.command(STRIKE); // echo: phase running, velocities set
+    service.dispose(); // detach the real timer; drive time manually
+    for (let i = 0; i < 60_000 / 250 && service.snapshot().phase === 'running'; i += 1) {
+      service.tick(250);
+    }
+    // No mid-roll streaming — clients replay the deterministic trajectory.
+    expect(phases).toEqual(['running', 'idle']);
   });
 });
 
