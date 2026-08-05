@@ -65,8 +65,21 @@ export const ko: Record<MessageKey, string> = {
   'billiards.preset.label': '게임 종류',
   'billiards.preset.carom': '캐롬 (4구)',
   'billiards.preset.pool': '포켓볼 (15구+큐볼)',
-  'billiards.speed': '초기 속도',
-  'billiards.direction': '방향',
+  'billiards.aimScheme.label': '조준 방식',
+  'billiards.aimScheme.orbitKnob': '궤도 손잡이',
+  'billiards.aimScheme.orbitKnob.hint':
+    '공 주위의 손잡이를 드래그하세요 — 각도가 방향, 거리가 세기입니다.',
+  'billiards.aimScheme.cuePull': '큐 당기기',
+  'billiards.aimScheme.cuePull.hint':
+    '큐를 뒤로 당기세요 — 공은 반대로 가고, 많이 당길수록 세게 칩니다.',
+  'billiards.aimScheme.dialPanel': '다이얼 패널',
+  'billiards.aimScheme.dialPanel.hint':
+    '떠 있는 패널을 드래그하세요 — 다이얼은 방향, 슬라이더는 세기입니다.',
+  'billiards.aimScheme.screenHud': '화면 HUD',
+  'billiards.aimScheme.screenHud.hint': '구석의 패널을 사용하세요 — 드래그와 키보드 모두 됩니다.',
+  'billiards.aimHud.direction': '조준 방향',
+  'billiards.aimHud.power': '타격 세기',
+  'billiards.aim': '조준 · 세기',
   'billiards.lateralSpeed': '횡방향 초기 속도',
   'billiards.topspin': '전진/후진 회전',
   'billiards.sidespin': '좌우 회전',

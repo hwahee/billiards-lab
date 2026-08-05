@@ -8,9 +8,18 @@
  */
 import { useMemo, useState } from 'react';
 
-import { cloneBalls, predictPaths, strike, type BallState } from '@shared/billiards/physics';
+import {
+  cloneBalls,
+  DEFAULT_PARAMS,
+  predictPaths,
+  strike,
+  type BallState,
+} from '@shared/billiards/physics';
 
+import { AIM_SCHEMES, activeAimCue } from '../billiards/aim';
+import { useAimScheme } from '../billiards/aim/use-aim-scheme';
 import { ballLabel, ballSpec, PRESETS, toStrikeInput } from '../billiards/config';
+import { HudLayer, HudPanel } from '../billiards/ui';
 import { BilliardsControls } from '../billiards/controls';
 import { BilliardsScene } from '../billiards/scene';
 import type { SimEvent } from '@shared/billiards/game-state';
@@ -80,6 +89,9 @@ export function BilliardsPage() {
   const { t } = useI18n();
   const sim = useBilliardsSim();
   const [showPrediction, setShowPrediction] = useState(true);
+  const [aimScheme, setAimScheme] = useAimScheme();
+  const AimOverlay = AIM_SCHEMES[aimScheme].Overlay;
+  const aimCue = activeAimCue(sim);
   const preset = PRESETS[sim.variant];
 
   // Exact preview: apply the current strike to a clone of the current layout
@@ -104,19 +116,34 @@ export function BilliardsPage() {
         <p className="muted">{t('billiards.description')}</p>
       </header>
       <div className="billiards-layout">
-        <div>
-          <div className="billiards-canvas" data-testid={TESTID.billiards.canvas}>
-            <BilliardsScene sim={sim} prediction={prediction} />
-          </div>
-          {sim.phase === 'idle' && (
-            <p className="muted billiards-canvas__hint">{t('billiards.dragHint')}</p>
-          )}
+        <div className="billiards-canvas" data-testid={TESTID.billiards.canvas}>
+          <BilliardsScene sim={sim} prediction={prediction} aimScheme={aimScheme} />
+          {/* Screen-space widgets over the 3D view. The layer owns the
+              geography; each widget just names an anchor, so the aim HUD and
+              the status hint coexist without knowing about each other. */}
+          <HudLayer>
+            {AimOverlay && aimCue && (
+              <AimOverlay
+                cue={aimCue}
+                shot={sim.shot}
+                onShotChange={sim.setShot}
+                ballRadius={DEFAULT_PARAMS.ballRadius}
+              />
+            )}
+            {sim.phase === 'idle' && (
+              <HudPanel anchor="top-left" testId={TESTID.billiards.hudHint} className="hud-hint">
+                {t('billiards.dragHint')}
+              </HudPanel>
+            )}
+          </HudLayer>
         </div>
         <div className="billiards-side">
           <BilliardsControls
             sim={sim}
             showPrediction={showPrediction}
             onShowPredictionChange={setShowPrediction}
+            aimScheme={aimScheme}
+            onAimSchemeChange={setAimScheme}
           />
           <section className="billiards-group billiards-readout">
             <h3>{t('billiards.group.state')}</h3>

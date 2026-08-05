@@ -458,6 +458,193 @@ a {
   border: 1px solid var(--color-border);
 }
 
+/* ── Screen-space HUD over the 3D view ────────────────────────────────────── */
+/* The layer is transparent to the pointer so orbiting/dragging the table
+   keeps working; only the panels themselves take input. */
+.hud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: var(--radius-surface);
+}
+
+.hud-layer__slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  max-width: min(100%, 22rem);
+}
+
+.hud-layer__slot--top-left {
+  top: 0;
+  left: 0;
+  align-items: flex-start;
+}
+.hud-layer__slot--top-right {
+  top: 0;
+  right: 0;
+  align-items: flex-end;
+}
+.hud-layer__slot--bottom-left {
+  bottom: 0;
+  left: 0;
+  align-items: flex-start;
+}
+.hud-layer__slot--bottom-right {
+  bottom: 0;
+  right: 0;
+  align-items: flex-end;
+}
+.hud-layer__slot--bottom-center {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
+
+.hud-panel {
+  pointer-events: auto;
+  color: #f4efe2;
+}
+
+.hud-hint {
+  pointer-events: none;
+  font-size: var(--font-size-sm);
+  color: rgb(244 239 226 / 0.72);
+  background: rgb(11 18 26 / 0.55);
+  border-radius: var(--radius-control);
+  padding: var(--space-1) var(--space-3);
+  text-align: center;
+}
+
+/* ── Aim HUD (the screen-space aim scheme) ────────────────────────────────── */
+.aim-hud {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: rgb(11 18 26 / 0.82);
+  border: var(--border-width) solid rgb(244 239 226 / 0.18);
+  border-radius: var(--radius-surface);
+}
+
+.aim-hud__dial {
+  width: 5.5rem;
+  height: 5.5rem;
+  flex-shrink: 0;
+  cursor: grab;
+  touch-action: none;
+  border-radius: var(--radius-full);
+}
+
+.aim-hud__dial:active {
+  cursor: grabbing;
+}
+
+.aim-hud__dial svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.aim-hud__dial-face {
+  fill: rgb(244 239 226 / 0.06);
+  stroke: rgb(244 239 226 / 0.35);
+  stroke-width: 2;
+}
+
+.aim-hud__dial-tick {
+  stroke: rgb(244 239 226 / 0.3);
+  stroke-width: 2;
+}
+
+.aim-hud__dial-needle {
+  stroke: #f4efe2;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.aim-hud__dial-knob {
+  fill: #f4efe2;
+}
+
+.aim-hud__dial-hub {
+  fill: rgb(244 239 226 / 0.8);
+}
+
+.aim-hud__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 9rem;
+}
+
+.aim-hud__power {
+  position: relative;
+  height: 1.1rem;
+  border-radius: var(--radius-full);
+  background: rgb(244 239 226 / 0.16);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.aim-hud__power-fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: var(--radius-full);
+  min-width: 1.1rem;
+}
+
+.aim-hud__power-thumb {
+  position: absolute;
+  top: 50%;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: -0.525rem;
+  border-radius: var(--radius-full);
+  background: #f4efe2;
+  border: 2px solid;
+  transform: translateY(-50%);
+}
+
+.aim-hud__readout {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: rgb(244 239 226 / 0.85);
+}
+
+.aim-hud__readout strong {
+  font-size: var(--font-size-body);
+  color: #f4efe2;
+}
+
+.aim-hud__dial:focus-visible,
+.aim-hud__power:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+/* ── Aim readout in the side panel ────────────────────────────────────────── */
+.billiards-aim-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  padding-block: 2px;
+  font-size: var(--font-size-sm);
+}
+
+.billiards-aim-hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+}
+
 /* ── Billiards ────────────────────────────────────────────────────────────── */
 /* Break out of the 60rem app shell: the 3D canvas needs the room. */
 .billiards-page {
@@ -493,17 +680,13 @@ a {
 }
 
 .billiards-canvas {
+  position: relative;
   height: min(68vh, 36rem);
   min-height: 20rem;
   border-radius: var(--radius-surface);
   overflow: hidden;
   border: var(--border-width) solid var(--color-border);
   background: #101820;
-}
-
-.billiards-canvas__hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--font-size-sm);
 }
 
 .billiards-side {

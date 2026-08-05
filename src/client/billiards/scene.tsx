@@ -30,11 +30,15 @@ import type { Mesh } from 'three';
 import { isOnFelt, trayFootprint } from '@shared/billiards/game-state';
 import { DEFAULT_PARAMS, type PredictedPath, type TableConfig } from '@shared/billiards/physics';
 
-import { ballSpec, PRESETS, type ShotSettings } from './config';
+import { AIM_SCHEMES, activeAimCue, type AimSchemeId } from './aim';
+import { ballSpec, PRESETS } from './config';
+import { DragScopeProvider, DragSurface, useDragScope, type DragScope } from './ui';
 import { makeBallTexture, makeNumberedBallTexture } from './textures';
 import type { BilliardsSim } from './use-billiards';
 
 const BALL_RADIUS = DEFAULT_PARAMS.ballRadius;
+/** Drag-scope name prefix for ball placement, e.g. `ball:white`. */
+const BALL_DRAG_PREFIX = 'ball:';
 const CUSHION_HEIGHT = 0.045;
 const CUSHION_THICKNESS = 0.06;
 const FRAME_THICKNESS = 0.11;
@@ -166,22 +170,18 @@ function Table({ table }: { table: TableConfig }) {
   );
 }
 
-function BallMeshes({
-  sim,
-  draggingId,
-  onDragStart,
-  onDragEnd,
-}: {
-  sim: BilliardsSim;
-  draggingId: string | null;
-  onDragStart: (ballId: string) => void;
-  onDragEnd: () => void;
-}) {
+function BallMeshes({ sim, scope }: { sim: BilliardsSim; scope: DragScope }) {
   const meshRefs = useRef(new Map<string, Mesh>());
   const preset = PRESETS[sim.variant];
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  useCursor(draggingId !== null, 'grabbing');
-  useCursor(draggingId === null && hoveredId !== null, 'grab');
+  // Ball drags take the shared pointer under a per-ball name, so the camera
+  // controls and the aim scheme all see one consistent "something is being
+  // dragged" state.
+  const draggedBallId = scope.owner?.startsWith(BALL_DRAG_PREFIX)
+    ? scope.owner.slice(BALL_DRAG_PREFIX.length)
+    : null;
+  useCursor(draggedBallId !== null, 'grabbing');
+  useCursor(draggedBallId === null && hoveredId !== null, 'grab');
 
   // Per-ball pocket-capture animation state (shrink → hidden → grow); a ball
   // absent from both maps and not `potted` is just in normal play, and one
@@ -297,7 +297,7 @@ function BallMeshes({
             if (!ball) return;
             if (potAnimRef.current.has(spec.id)) return; // mid pocket animation, not grabbable yet
             e.stopPropagation();
-            onDragStart(spec.id);
+            scope.claim(`${BALL_DRAG_PREFIX}${spec.id}`);
           }}
           onPointerOver={(e: ThreeEvent<PointerEvent>) => {
             if (sim.phase !== 'idle') return;
@@ -310,22 +310,12 @@ function BallMeshes({
           <meshStandardMaterial map={textures.get(spec.id)} roughness={0.2} metalness={0.05} />
         </mesh>
       ))}
-      {draggingId && (
-        <mesh
-          position={[0, BALL_RADIUS * 4, 0]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          onPointerMove={(e: ThreeEvent<PointerEvent>) => {
-            e.stopPropagation();
-            sim.placeBall(draggingId, e.point.x, -e.point.z);
-          }}
-          onPointerUp={(e: ThreeEvent<PointerEvent>) => {
-            e.stopPropagation();
-            onDragEnd();
-          }}
-        >
-          <planeGeometry args={[40, 40]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
+      {draggedBallId !== null && (
+        <DragSurface
+          y={BALL_RADIUS * 4}
+          onMove={(event) => sim.placeBall(draggedBallId, event.point.x, -event.point.z)}
+          onRelease={() => scope.release(`${BALL_DRAG_PREFIX}${draggedBallId}`)}
+        />
       )}
     </>
   );
@@ -359,39 +349,33 @@ function PredictionLines({ paths }: { paths: PredictedPath[] }) {
   );
 }
 
-function AimLine({ sim, shot }: { sim: BilliardsSim; shot: ShotSettings }) {
-  const cueBallId = PRESETS[sim.variant].cueBallId;
-  const cue = sim.snapshot.find((ball) => ball.id === cueBallId);
-  if (!cue || cue.potted) return null;
-  const rad = (shot.directionDeg * Math.PI) / 180;
-  const length = 0.18 + shot.speed * 0.08;
-  const from = [cue.position.x, BALL_RADIUS, -cue.position.y] as const;
-  const to = [
-    cue.position.x + Math.cos(rad) * length,
-    BALL_RADIUS,
-    -(cue.position.y + Math.sin(rad) * length),
-  ] as const;
-  return <Line points={[from, to]} color="#ffffff" lineWidth={2} transparent opacity={0.9} />;
+/**
+ * The active aim scheme's in-scene half. Which widget appears — or whether
+ * there is one at all, for a HUD-only scheme — is entirely the scheme's
+ * business; see ./aim for the registry and the contract.
+ */
+function Aim({ sim, schemeId }: { sim: BilliardsSim; schemeId: AimSchemeId }) {
+  const cue = activeAimCue(sim);
+  const { Scene } = AIM_SCHEMES[schemeId];
+  if (!cue || !Scene) return null;
+  return <Scene cue={cue} shot={sim.shot} onShotChange={sim.setShot} ballRadius={BALL_RADIUS} />;
 }
 
 export function BilliardsScene({
   sim,
   prediction,
+  aimScheme,
 }: {
   sim: BilliardsSim;
   prediction: PredictedPath[] | null;
+  aimScheme: AimSchemeId;
 }) {
   const table = PRESETS[sim.variant].table;
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-
-  // Safety net: end the drag even if the pointer is released off-canvas,
-  // where the plane's own onPointerUp never fires.
-  useEffect(() => {
-    if (draggingId === null) return;
-    const endDrag = () => setDraggingId(null);
-    window.addEventListener('pointerup', endDrag);
-    return () => window.removeEventListener('pointerup', endDrag);
-  }, [draggingId]);
+  // One notion of "something is being dragged", shared by ball placement and
+  // whatever the aim scheme puts on the table — and read here to stand the
+  // camera controls down. Created outside the canvas so OrbitControls can
+  // see it; provided inside, since context does not cross that boundary.
+  const dragScope = useDragScope();
 
   return (
     <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 2.1, 1.9], fov: 42 }}>
@@ -408,17 +392,14 @@ export function BilliardsScene({
         shadow-camera-bottom={-2}
       />
       <Table table={table} />
-      <BallMeshes
-        sim={sim}
-        draggingId={draggingId}
-        onDragStart={setDraggingId}
-        onDragEnd={() => setDraggingId(null)}
-      />
+      <DragScopeProvider value={dragScope}>
+        <BallMeshes sim={sim} scope={dragScope} />
+        <Aim sim={sim} schemeId={aimScheme} />
+      </DragScopeProvider>
       {prediction && <PredictionLines paths={prediction} />}
-      {sim.phase === 'idle' && <AimLine sim={sim} shot={sim.shot} />}
       <OrbitControls
         makeDefault
-        enabled={draggingId === null}
+        enabled={dragScope.owner === null}
         target={[0, 0, 0]}
         maxPolarAngle={1.45}
         minDistance={0.6}

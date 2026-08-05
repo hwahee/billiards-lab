@@ -53,6 +53,11 @@ export const TESTID = {
     ballState: (id: string) => `billiards.state.${id}`,
     eventLog: 'billiards.event-log',
     turnIndicator: 'billiards.turn-indicator',
+    aimReadout: 'billiards.aim-readout',
+    aimHud: 'billiards.aim-hud',
+    aimHudDial: 'billiards.aim-hud.dial',
+    aimHudPower: 'billiards.aim-hud.power',
+    hudHint: 'billiards.hud.hint',
   },
   designSystem: {
     page: 'design-system.page',
