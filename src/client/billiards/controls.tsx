@@ -13,6 +13,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { Select } from '../ui/select';
+import { AIM_SCHEMES, AIM_SCHEME_IDS, type AimSchemeId } from './aim';
 import { PRESETS } from './config';
 import type { BilliardsSim } from './use-billiards';
 
@@ -116,10 +117,14 @@ export function BilliardsControls({
   sim,
   showPrediction,
   onShowPredictionChange,
+  aimScheme,
+  onAimSchemeChange,
 }: {
   sim: BilliardsSim;
   showPrediction: boolean;
   onShowPredictionChange: (show: boolean) => void;
+  aimScheme: AimSchemeId;
+  onAimSchemeChange: (id: AimSchemeId) => void;
 }) {
   const { t } = useI18n();
   const { phase, shot, setShot, physics, setPhysics } = sim;
@@ -147,26 +152,22 @@ export function BilliardsControls({
 
       <section className="billiards-group">
         <h3>{t('billiards.group.shot')}</h3>
-        <SliderRow
-          name="speed"
-          labelKey="billiards.speed"
-          value={shot.speed}
-          min={0.2}
-          max={6}
-          step={0.1}
-          unit="m/s"
-          onChange={(speed) => setShot({ ...shot, speed })}
+        {/* Direction and power are set in the view by the chosen aim scheme
+            (see billiards/aim); shown here read-only. */}
+        <Select
+          label={t('billiards.aimScheme.label')}
+          value={aimScheme}
+          options={AIM_SCHEME_IDS.map((id) => ({ value: id, label: t(AIM_SCHEMES[id].labelKey) }))}
+          onChange={onAimSchemeChange}
+          testId={TESTID.billiards.control('aim-scheme')}
         />
-        <SliderRow
-          name="direction"
-          labelKey="billiards.direction"
-          value={shot.directionDeg}
-          min={-180}
-          max={180}
-          step={1}
-          unit="°"
-          onChange={(directionDeg) => setShot({ ...shot, directionDeg })}
-        />
+        <p className="billiards-aim-readout" data-testid={TESTID.billiards.aimReadout}>
+          <span className="billiards-slider__label">{t('billiards.aim')}</span>
+          <code>
+            {shot.speed.toFixed(1)} m/s · {shot.directionDeg.toFixed(0)}°
+          </code>
+        </p>
+        <p className="muted billiards-aim-hint">{t(AIM_SCHEMES[aimScheme].hintKey)}</p>
         <SliderRow
           name="lateral-speed"
           labelKey="billiards.lateralSpeed"

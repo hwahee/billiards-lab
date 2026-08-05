@@ -25,6 +25,9 @@ played back in 3D. Because the engine is a fixed-timestep pure function, the
 | Room integration tests (over HTTP)                         | `src/server/http/billiards.integration.test.ts` |
 | Presentation config (ball specs/colours, default shot)     | `src/client/billiards/config.ts`                |
 | Client room state (commands, local shot replay)            | `src/client/billiards/use-billiards.ts`         |
+| UI substrate (billboard rule, panels, HUD, drag)           | `src/client/billiards/ui/`                      |
+| Billboard maths tests                                      | `src/client/billiards/ui/billboard.test.ts`     |
+| Aim schemes (registry, contract, shared model)             | `src/client/billiards/aim/`                     |
 | 3D scene (table, pockets, balls, prediction lines)         | `src/client/billiards/scene.tsx`                |
 | Control panel (incl. preset selector)                      | `src/client/billiards/controls.tsx`             |
 | Page                                                       | `src/client/pages/billiards-page.tsx`           |
@@ -205,11 +208,98 @@ hitting the plane — not whatever ball is currently under the cursor — for
 the whole gesture; `OrbitControls` is disabled for the duration so orbiting
 the camera and dragging a ball never fight over the same pointer.
 
+## In-view UI
+
+Direction and power are set in the view rather than by panel sliders. Two
+substrates carry that, and `src/client/billiards/ui/` is both of them.
+
+### The clamped-billboard rule (in-world elements)
+
+Elements that belong to the table are drawn in the 3D scene, oriented by a
+rule sitting between "fixed in the world" and "always facing the camera",
+so they read as objects rather than stickers on the viewport:
+
+- every element has a **home pose** — the orientation it prefers, chosen to
+  make sense in world space;
+- there is a **tolerance angle** around facing the camera. While the home
+  pose is within it the element does not move at all: the camera orbits and
+  it stays put, taking on perspective like the rest of the scene;
+- past that tolerance it turns toward the camera, but only far enough to
+  sit back exactly **on the boundary** — never further.
+
+`maxAngle = 0` degenerates to a classic billboard. The turn is always the
+minimal rotation, so an element's roll is carried along rather than reset —
+a panel lying flat tips up toward the viewer instead of spinning to face
+it. `clampedBillboardQuaternion()` is the pure maths (`ui/billboard.ts`,
+tested in isolation); `<FacingGroup>` applies it per frame and adds the two
+things such elements always end up needing:
+
+- **`responsiveness`** — eases into each new orientation instead of
+  snapping, so crossing the tolerance reads as a turn rather than a
+  teleport, frame-rate independently (`smoothingAlpha`);
+- **`constantSizeAt`** — scales by camera distance to hold a constant
+  apparent size, without which anything you must _aim at_ becomes unusable
+  as the camera pulls back.
+
+`<Panel>` draws panel content from a canvas texture, so these elements need
+no font asset and no DOM. Panels forward pointer handlers and hand back
+`event.uv`, which is what lets a panel be a control surface rather than
+only a readout.
+
+### The HUD layer (screen-space elements)
+
+`ui/hud.tsx` is the overlay above the 3D view, and it expects to hold more
+than one thing: it owns the geography (five anchors) and each widget merely
+names one, so several can share the view — and a corner — without
+hard-coding offsets or knowing about each other. The layer is transparent
+to pointer events and only its panels take input, so orbiting and dragging
+the table keep working everywhere the HUD isn't.
+
+### One drag at a time
+
+Ball placement and whatever the aim scheme puts on the cloth both want the
+pointer, and while either holds it the camera controls must stand down.
+`ui/drag.tsx` makes that explicit: a widget claims the drag by name, the
+scene reads whether anything is claimed to enable/disable `OrbitControls`,
+and releasing is handled centrally — including the case widgets always get
+wrong, where the pointer comes up outside the canvas.
+
+## Aim schemes
+
+_How_ direction and power are set is pluggable. `src/client/billiards/aim/`
+is a registry of schemes, all implementing one contract: they receive the
+cue ball, the current shot and a change callback, and render into the 3D
+scene (`Scene`), the HUD (`Overlay`), or both — so _where the control
+lives_ is the scheme's own choice, and swapping an in-world widget for a
+HUD is the same act as swapping two in-world widgets.
+
+Switching the whole aiming experience is one setting — `useAimScheme`,
+surfaced as the **Aim style** picker and persisted per browser — and adding
+a scheme is one entry in `AIM_SCHEMES`. Both mount points gate on
+`activeAimCue(sim)`, so no scheme has to know about turn order, a potted
+cue ball or a shot in flight.
+
+| Scheme           | Gesture                                                           | What it asks of the substrate                              |
+| ---------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Orbit knob**   | Drag a knob around the ball: bearing aims, distance sets power    | An upright readout holding a fixed world pose (32°)        |
+| **Pull the cue** | Drag the cue back; the ball goes the other way, distance is power | A home pose that changes at runtime — it yaws with the aim |
+| **Dial panel**   | Drag on a floating panel: dial for direction, slider for power    | An interactive panel: near-billboard (12°), constant size  |
+| **Screen HUD**   | A dial and slider pinned to the corner of the view                | The HUD layer instead — and, being DOM, keyboard operable  |
+
+`aim/model.ts` holds what every scheme shares: the speed ↔ power mapping,
+the power colour ramp, pointer → table-plane geometry, and the keyboard
+increments, so schemes agree on feel and the conversions are tested once
+rather than per scheme. Scheme-specific geometry stays with its scheme —
+the dial panel declares its zone layout once, in uv, and both its painter
+and its hit test read that same object, since the two drifting apart is the
+bug that shape of widget invites.
+
 ## UI variables
 
-- **Shot**: initial speed (m/s), direction (°), lateral speed (m/s,
-  perpendicular to the aim), topspin/backspin (rad/s), sidespin (rad/s),
-  roll spin around the travel axis (rad/s, curves the sliding path).
+- **Shot**: direction and power come from the aim scheme in the view (see
+  above); lateral speed (m/s, perpendicular to the aim), topspin/backspin
+  (rad/s), sidespin (rad/s) and roll spin around the travel axis (rad/s,
+  curves the sliding path) remain sliders.
 - **Physics coefficients**: μs, μr, μsp, cushion restitution & friction,
   ball restitution & friction — all adjustable live; the prediction reruns
   on every change. Pool adds a pocket capture speed slider.

@@ -69,8 +69,22 @@ export const en = {
   'billiards.preset.label': 'Game',
   'billiards.preset.carom': 'Carom (4-ball)',
   'billiards.preset.pool': 'Pool (15-ball + cue)',
-  'billiards.speed': 'Initial speed',
-  'billiards.direction': 'Direction',
+  'billiards.aimScheme.label': 'Aim style',
+  'billiards.aimScheme.orbitKnob': 'Orbit knob',
+  'billiards.aimScheme.orbitKnob.hint':
+    'Drag the knob around the ball — bearing aims, distance sets power.',
+  'billiards.aimScheme.cuePull': 'Pull the cue',
+  'billiards.aimScheme.cuePull.hint':
+    'Drag the cue back — the ball goes the other way, and further back hits harder.',
+  'billiards.aimScheme.dialPanel': 'Dial panel',
+  'billiards.aimScheme.dialPanel.hint':
+    'Drag on the floating panel — dial for direction, slider for power.',
+  'billiards.aimScheme.screenHud': 'Screen HUD',
+  'billiards.aimScheme.screenHud.hint':
+    'Use the panel in the corner — draggable, and operable from the keyboard.',
+  'billiards.aimHud.direction': 'Aim direction',
+  'billiards.aimHud.power': 'Shot power',
+  'billiards.aim': 'Aim & power',
   'billiards.lateralSpeed': 'Lateral speed',
   'billiards.topspin': 'Topspin / backspin',
   'billiards.sidespin': 'Sidespin',
