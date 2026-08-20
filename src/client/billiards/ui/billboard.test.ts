@@ -135,3 +135,65 @@ describe('apparentSizeScale', () => {
     expect(apparentSizeScale(3, 0)).toBe(1);
   });
 });
+
+describe('roll: the third degree of freedom stays pinned', () => {
+  /** The element's up vector in world space. */
+  const upOf = (q: Quaternion) => new Vector3(0, 1, 0).applyQuaternion(q);
+
+  const cameraAt = (azimuthDeg: number, elevationDeg: number) => {
+    const a = azimuthDeg * DEG;
+    const e = elevationDeg * DEG;
+    return new Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+  };
+
+  test('an upright element is never rendered upside down, from any angle', () => {
+    // Regression: the minimal rotation used to drag the up vector over with
+    // it, flipping the element as the camera swung round behind it.
+    for (let azimuth = 0; azimuth < 360; azimuth += 5) {
+      for (let elevation = -80; elevation <= 80; elevation += 5) {
+        const q = clampedBillboardQuaternion(upright, cameraAt(azimuth, elevation), 32 * DEG);
+        expect(upOf(q).y).toBeGreaterThanOrEqual(-1e-9);
+      }
+    }
+  });
+
+  test('stays clearly upright with the camera directly behind it', () => {
+    const q = clampedBillboardQuaternion(upright, cameraAt(180, 5), 32 * DEG);
+    expect(upOf(q).y).toBeGreaterThan(0.5);
+  });
+
+  test('the up vector never flips between neighbouring camera angles', () => {
+    // A flip shows up as the up vector reversing over a tiny camera move.
+    let previous = upOf(clampedBillboardQuaternion(upright, cameraAt(0, 10), 32 * DEG));
+    for (let azimuth = 1; azimuth <= 360; azimuth += 1) {
+      const current = upOf(clampedBillboardQuaternion(upright, cameraAt(azimuth, 10), 32 * DEG));
+      expect(current.dot(previous)).toBeGreaterThan(0.9);
+      previous = current;
+    }
+  });
+
+  test('a home pose with deliberate roll keeps it while inside the tolerance', () => {
+    // Roll is pinned to the home pose's own up, not to world up, so a
+    // tilted element stays tilted rather than being levelled.
+    const tilted = new Quaternion().setFromEuler(new Euler(0, 0, 25 * DEG));
+    const q = clampedBillboardQuaternion(tilted, new Vector3(0, 0, 1), 30 * DEG);
+    expect(q.angleTo(tilted)).toBeCloseTo(0, 9);
+  });
+
+  test("a camera along the element's own up axis is handled without NaN", () => {
+    // The up vector cannot disambiguate roll here; the fallback must still
+    // produce a usable orientation.
+    const q = clampedBillboardQuaternion(upright, new Vector3(0, 1, 0), 0);
+    for (const v of [q.x, q.y, q.z, q.w]) expect(Number.isNaN(v)).toBe(false);
+    expect(angleBetween(facing(q), new Vector3(0, 1, 0))).toBeCloseTo(0, 6);
+  });
+
+  test('always returns a unit quaternion', () => {
+    for (let azimuth = 0; azimuth < 360; azimuth += 17) {
+      for (const elevation of [-70, -20, 0, 20, 70]) {
+        const q = clampedBillboardQuaternion(flat, cameraAt(azimuth, elevation), 20 * DEG);
+        expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 9);
+      }
+    }
+  });
+});

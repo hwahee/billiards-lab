@@ -20,24 +20,38 @@
  * with big ones while staying pinned to the edge of readability. A
  * `maxAngle` of 0 degenerates to a classic always-face-me billboard.
  *
- * The rotation applied is the minimal one (about the axis perpendicular to
- * both directions), so the element's roll is carried along rather than
- * reset — a panel lying flat tips up toward the viewer instead of spinning.
+ * The rule fixes only WHERE THE ELEMENT POINTS — two degrees of freedom.
+ * The third, roll about that axis, is pinned separately to the home pose's
+ * own up vector. Leaving it implicit is a trap: the natural choice, the
+ * minimal rotation from home to the clamped direction, drags the element's
+ * up vector along with it, so a camera swinging round behind an element
+ * (a turn approaching 180°) rolls it all the way over and renders it
+ * upside down. Pointing and roll are separate questions, so they are
+ * answered separately.
+ *
+ * Pinning roll to the HOME pose's up rather than to world up keeps the
+ * rule general: an element that prefers to lie flat still tips up toward
+ * the viewer, and an element whose home pose is deliberately tilted keeps
+ * that tilt, because within the tolerance the result is exactly `home`.
  *
  * Everything here is pure and allocation-free so it can run per element per
  * frame, and so the rule can be tested without a renderer.
  */
-import { Quaternion, Vector3 } from 'three';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 
-/** Local axis treated as an element's facing direction (three.js convention). */
+/** Local axes, three.js convention: the element faces +z with +y up. */
 const LOCAL_FORWARD = new Vector3(0, 0, 1);
-/** Local axis used as the fallback rotation axis in the antiparallel case. */
 const LOCAL_UP = new Vector3(0, 1, 0);
+const LOCAL_RIGHT = new Vector3(1, 0, 0);
 
 const _dir = new Vector3();
 const _forward = new Vector3();
 const _axis = new Vector3();
 const _delta = new Quaternion();
+const _upRef = new Vector3();
+const _right = new Vector3();
+const _up = new Vector3();
+const _basis = new Matrix4();
 
 /**
  * The orientation an element should render with this frame.
@@ -74,8 +88,38 @@ export function clampedBillboardQuaternion(
   }
   _axis.normalize();
 
+  // Where the element now points — the two degrees of freedom the rule owns.
   _delta.setFromAxisAngle(_axis, excess);
-  return out.premultiply(_delta);
+  _forward.applyQuaternion(_delta);
+
+  return orientTowards(_forward, home, out);
+}
+
+/**
+ * Builds the orientation that faces `forward` while keeping the element's
+ * up as close as possible to the home pose's up — the third degree of
+ * freedom, pinned rather than left to fall out of the turn.
+ *
+ * With `forward` equal to the home pose's own forward this reproduces
+ * `home` exactly, which is what lets the caller treat "inside the
+ * tolerance" as "don't touch it".
+ */
+function orientTowards(forward: Vector3, home: Quaternion, out: Quaternion): Quaternion {
+  _upRef.copy(LOCAL_UP).applyQuaternion(home);
+  _right.crossVectors(_upRef, forward);
+  if (_right.lengthSq() < 1e-12) {
+    // Looking straight along the element's up: its up cannot disambiguate
+    // roll, so fall back to the home pose's right, which is perpendicular
+    // to that up by construction.
+    _right.copy(LOCAL_RIGHT).applyQuaternion(home);
+  }
+  _right.normalize();
+  _up.crossVectors(forward, _right).normalize();
+  // Re-derive right from the orthonormalised pair so the basis is exact.
+  _right.crossVectors(_up, forward);
+
+  _basis.makeBasis(_right, _up, forward);
+  return out.setFromRotationMatrix(_basis);
 }
 
 /**
