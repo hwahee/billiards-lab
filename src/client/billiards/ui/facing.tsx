@@ -24,6 +24,7 @@ import { apparentSizeScale, clampedBillboardQuaternion, smoothingAlpha } from '.
 
 const _worldPos = new Vector3();
 const _toCamera = new Vector3();
+const _cameraUp = new Vector3();
 const _target = new Quaternion();
 const _home = new Quaternion();
 const _euler = new Euler();
@@ -74,7 +75,9 @@ export function FacingGroup({
 
     group.getWorldPosition(_worldPos);
     _toCamera.copy(camera.position).sub(_worldPos);
-    clampedBillboardQuaternion(_home, _toCamera, maxAngle, _target);
+    // Column 1 of the camera's world matrix — which way is up on screen.
+    _cameraUp.setFromMatrixColumn(camera.matrixWorld, 1);
+    clampedBillboardQuaternion(_home, _toCamera, _cameraUp, maxAngle, _target);
 
     // The first frame lands on the target outright: easing in from the home
     // pose would read as the element flying into place on mount.

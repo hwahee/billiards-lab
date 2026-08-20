@@ -227,12 +227,29 @@ so they read as objects rather than stickers on the viewport:
 - past that tolerance it turns toward the camera, but only far enough to
   sit back exactly **on the boundary** — never further.
 
-`maxAngle = 0` degenerates to a classic billboard. The turn is always the
-minimal rotation, so an element's roll is carried along rather than reset —
-a panel lying flat tips up toward the viewer instead of spinning to face
-it. `clampedBillboardQuaternion()` is the pure maths (`ui/billboard.ts`,
-tested in isolation); `<FacingGroup>` applies it per frame and adds the two
-things such elements always end up needing:
+`maxAngle = 0` degenerates to a classic billboard.
+
+**The tolerance is measured on the whole rotation**, not just on the axis
+the element points along. Measuring only the axis constrains two degrees of
+freedom and leaves the third — roll — to fall out of the turn, which
+renders elements upside down: the minimal turn drags the up vector over
+when the camera swings behind, and pinning roll to a world axis instead
+only relocates the failure to the camera that looks along that axis (an
+overhead camera over a table). "Upside down" is a screen-space property, so
+the rule is anchored to a screen-space pose — pointing at the camera,
+upright on screen — and clamps along the geodesic to it. One number then
+bounds everything: the element's facing is within `maxAngle` of the camera
+**and** its up vector is within `maxAngle` of screen up, from every angle.
+A flat panel still tips up toward the viewer rather than spinning to face
+it, because inside the tolerance the result is exactly the home pose.
+
+The single ambiguous case is a camera exactly opposite the home pose, where
+left and right are mirror images; crossing it swaps the choice by at most
+twice the tolerance, which the easing below absorbs.
+
+`clampedBillboardQuaternion()` is the pure maths (`ui/billboard.ts`, tested
+in isolation); `<FacingGroup>` applies it per frame and adds the two things
+such elements always end up needing:
 
 - **`responsiveness`** — eases into each new orientation instead of
   snapping, so crossing the tolerance reads as a turn rather than a

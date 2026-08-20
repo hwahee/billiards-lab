@@ -10,40 +10,62 @@ function facing(q: Quaternion): Vector3 {
   return new Vector3(0, 0, 1).applyQuaternion(q);
 }
 
+/** The element's up vector in world space. */
+function upOf(q: Quaternion): Vector3 {
+  return new Vector3(0, 1, 0).applyQuaternion(q);
+}
+
 function angleBetween(a: Vector3, b: Vector3): number {
   return a.angleTo(b);
+}
+
+/** A level camera looking at the element from the given direction. */
+const WORLD_UP = new Vector3(0, 1, 0);
+function levelCameraUp(toCamera: Vector3): Vector3 {
+  const t = toCamera.clone().normalize();
+  return WORLD_UP.clone().addScaledVector(t, -WORLD_UP.dot(t)).normalize();
+}
+
+/** Camera direction and matching screen up for an orbit at these angles. */
+function orbit(azimuthDeg: number, elevationDeg: number) {
+  const a = azimuthDeg * DEG;
+  const e = elevationDeg * DEG;
+  const toCamera = new Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+  return { toCamera, cameraUp: levelCameraUp(toCamera) };
 }
 
 /** Home pose facing +z (the identity pose), as upright panels use. */
 const upright = new Quaternion();
 /** Home pose lying flat, facing +y — a panel printed on the table. */
 const flat = new Quaternion().setFromEuler(new Euler(-Math.PI / 2, 0, 0));
+/** Screen up for a camera on the +z axis, the pose `upright` is authored for. */
+const SCREEN_UP = new Vector3(0, 1, 0);
 
 describe('clampedBillboardQuaternion', () => {
   test('holds the home pose while the camera is inside the tolerance', () => {
     const toCamera = new Vector3(Math.sin(20 * DEG), 0, Math.cos(20 * DEG));
-    const result = clampedBillboardQuaternion(upright, toCamera, 30 * DEG);
+    const result = clampedBillboardQuaternion(upright, toCamera, SCREEN_UP, 30 * DEG);
     expect(angleBetween(facing(result), facing(upright))).toBeCloseTo(0, 9);
   });
 
   test('holds the home pose exactly at the tolerance boundary', () => {
     const toCamera = new Vector3(Math.sin(30 * DEG), 0, Math.cos(30 * DEG));
-    const result = clampedBillboardQuaternion(upright, toCamera, 30 * DEG);
+    const result = clampedBillboardQuaternion(upright, toCamera, SCREEN_UP, 30 * DEG);
     expect(angleBetween(facing(result), facing(upright))).toBeCloseTo(0, 9);
   });
 
   test('past the tolerance it turns just enough to sit on the boundary', () => {
     // Camera 90° away, tolerance 30° → face 60° from home, 30° from camera.
     const toCamera = new Vector3(1, 0, 0);
-    const result = clampedBillboardQuaternion(upright, toCamera, 30 * DEG);
+    const result = clampedBillboardQuaternion(upright, toCamera, SCREEN_UP, 30 * DEG);
     expect(angleBetween(facing(result), facing(upright)) / DEG).toBeCloseTo(60, 6);
     expect(angleBetween(facing(result), toCamera) / DEG).toBeCloseTo(30, 6);
   });
 
   test('never turns further from home than it has to', () => {
     for (const deg of [0, 15, 45, 90, 135, 179]) {
-      const toCamera = new Vector3(Math.sin(deg * DEG), 0, Math.cos(deg * DEG));
-      const result = clampedBillboardQuaternion(upright, toCamera, 40 * DEG);
+      const { toCamera, cameraUp } = orbit(deg, 0);
+      const result = clampedBillboardQuaternion(upright, toCamera, cameraUp, 40 * DEG);
       const moved = angleBetween(facing(result), facing(upright)) / DEG;
       expect(moved).toBeCloseTo(Math.max(0, deg - 40), 6);
     }
@@ -51,21 +73,24 @@ describe('clampedBillboardQuaternion', () => {
 
   test('the turn is continuous across the boundary', () => {
     const at = (deg: number) => {
-      const toCamera = new Vector3(Math.sin(deg * DEG), 0, Math.cos(deg * DEG));
-      return facing(clampedBillboardQuaternion(upright, toCamera, 30 * DEG));
+      const { toCamera, cameraUp } = orbit(deg, 0);
+      return facing(clampedBillboardQuaternion(upright, toCamera, cameraUp, 30 * DEG));
     };
     expect(angleBetween(at(29.9), at(30.1)) / DEG).toBeLessThan(0.5);
   });
 
   test('tolerance 0 degenerates to a plain always-face-the-camera billboard', () => {
     const toCamera = new Vector3(1, 2, 3);
-    const result = clampedBillboardQuaternion(upright, toCamera, 0);
+    const cameraUp = levelCameraUp(toCamera);
+    const result = clampedBillboardQuaternion(upright, toCamera, cameraUp, 0);
     expect(angleBetween(facing(result), toCamera)).toBeCloseTo(0, 6);
+    expect(angleBetween(upOf(result), cameraUp)).toBeCloseTo(0, 6);
   });
 
   test('a flat panel tips up toward the camera, keeping its roll', () => {
     const toCamera = new Vector3(0, 1, 1).normalize();
-    const result = clampedBillboardQuaternion(flat, toCamera, 10 * DEG);
+    const cameraUp = levelCameraUp(toCamera);
+    const result = clampedBillboardQuaternion(flat, toCamera, cameraUp, 10 * DEG);
     const f = facing(result);
     expect(angleBetween(f, toCamera) / DEG).toBeCloseTo(10, 6);
     // Rotated about x only — no yaw or roll introduced.
@@ -75,20 +100,139 @@ describe('clampedBillboardQuaternion', () => {
 
   test('a camera exactly behind the element is handled without NaN', () => {
     const toCamera = new Vector3(0, 0, -1);
-    const result = clampedBillboardQuaternion(upright, toCamera, 30 * DEG);
+    const result = clampedBillboardQuaternion(upright, toCamera, SCREEN_UP, 30 * DEG);
     for (const v of [result.x, result.y, result.z, result.w]) expect(Number.isNaN(v)).toBe(false);
     expect(angleBetween(facing(result), toCamera) / DEG).toBeCloseTo(30, 6);
   });
 
   test('a degenerate (zero-length) camera vector leaves the home pose alone', () => {
-    const result = clampedBillboardQuaternion(flat, new Vector3(0, 0, 0), 30 * DEG);
+    const result = clampedBillboardQuaternion(flat, new Vector3(0, 0, 0), SCREEN_UP, 30 * DEG);
     expect(result.equals(flat)).toBe(true);
+  });
+
+  test('a camera up parallel to the view direction still yields a usable pose', () => {
+    // Not reachable with a real camera, but the rule must not produce NaN.
+    for (const toCamera of [new Vector3(0, 0, 1), new Vector3(1, 1, 1), new Vector3(0, 1, 0)]) {
+      const result = clampedBillboardQuaternion(upright, toCamera, toCamera, 0);
+      for (const v of [result.x, result.y, result.z, result.w]) expect(Number.isNaN(v)).toBe(false);
+      expect(angleBetween(facing(result), toCamera)).toBeCloseTo(0, 6);
+    }
   });
 
   test('writes into the provided target instead of allocating', () => {
     const out = new Quaternion();
-    const result = clampedBillboardQuaternion(upright, new Vector3(1, 0, 0), 0, out);
+    const result = clampedBillboardQuaternion(upright, new Vector3(1, 0, 0), SCREEN_UP, 0, out);
     expect(result).toBe(out);
+  });
+});
+
+describe('the tolerance bounds all three degrees of freedom', () => {
+  const MAX = 32 * DEG;
+
+  /** Every orbit angle a user can actually reach, near-vertical included. */
+  function* everyAngle() {
+    for (let azimuth = 0; azimuth < 360; azimuth += 5) {
+      for (const elevation of [-89, -85, -60, -30, 0, 30, 60, 85, 89]) {
+        yield { azimuth, elevation, ...orbit(azimuth, elevation) };
+      }
+    }
+  }
+
+  function poseAt(azimuth: number, elevation: number): [Vector3, Vector3, number] {
+    const { toCamera, cameraUp } = orbit(azimuth, elevation);
+    return [toCamera, cameraUp, MAX];
+  }
+
+  test('an upright element is never rendered upside down, from any angle', () => {
+    // Regression: with roll left implicit the element flipped as the camera
+    // swung behind it, and pinning roll to world up flipped it again from
+    // overhead, where world up is the very axis the camera looks along.
+    const leaning: string[] = [];
+    for (const { azimuth, elevation, toCamera, cameraUp } of everyAngle()) {
+      const q = clampedBillboardQuaternion(upright, toCamera, cameraUp, MAX);
+      const dot = upOf(q).dot(cameraUp);
+      if (dot <= 0.5) leaning.push(`azim ${azimuth}° elev ${elevation}° → ${dot.toFixed(3)}`);
+    }
+    expect(leaning).toEqual([]);
+  });
+
+  test('the element never leans further from screen up than the tolerance', () => {
+    for (const { toCamera, cameraUp } of everyAngle()) {
+      const q = clampedBillboardQuaternion(upright, toCamera, cameraUp, MAX);
+      expect(angleBetween(upOf(q), cameraUp)).toBeLessThanOrEqual(MAX + 1e-9);
+    }
+  });
+
+  test('the element never points further from the camera than the tolerance', () => {
+    for (const { toCamera, cameraUp } of everyAngle()) {
+      const q = clampedBillboardQuaternion(upright, toCamera, cameraUp, MAX);
+      expect(angleBetween(facing(q), toCamera)).toBeLessThanOrEqual(MAX + 1e-9);
+    }
+  });
+
+  test('both bounds hold for a flat home pose too', () => {
+    for (const { toCamera, cameraUp } of everyAngle()) {
+      const q = clampedBillboardQuaternion(flat, toCamera, cameraUp, MAX);
+      expect(angleBetween(upOf(q), cameraUp)).toBeLessThanOrEqual(MAX + 1e-9);
+      expect(angleBetween(facing(q), toCamera)).toBeLessThanOrEqual(MAX + 1e-9);
+    }
+  });
+
+  test('stays upright under a near-overhead camera — the reported case', () => {
+    // A camera almost directly above the table: world up is useless as a
+    // reference here, because it points straight at the lens.
+    const { toCamera, cameraUp } = orbit(172, 80);
+    const q = clampedBillboardQuaternion(upright, toCamera, cameraUp, MAX);
+    expect(upOf(q).dot(cameraUp)).toBeGreaterThan(0.8);
+  });
+
+  test('the orientation tracks the camera smoothly as it orbits', () => {
+    // Away from the one ambiguous configuration (below), a 1° camera move
+    // must never move the element more than a degree or so.
+    for (const elevation of [0, 45, 80]) {
+      let previous = clampedBillboardQuaternion(upright, ...poseAt(0, elevation));
+      for (let azimuth = 1; azimuth <= 360; azimuth += 1) {
+        const current = clampedBillboardQuaternion(upright, ...poseAt(azimuth, elevation));
+        // Azimuth 180 is the ambiguous meridian, covered by the next test.
+        if (Math.abs(180 - azimuth) >= 3) {
+          expect(current.angleTo(previous) / DEG).toBeLessThan(3);
+        }
+        previous = current;
+      }
+    }
+  });
+
+  test('the one ambiguous meridian swings by at most twice the tolerance', () => {
+    // With the camera exactly opposite the home pose, turning left and
+    // turning right are mirror images and the rule has to pick one; crossing
+    // that point swaps the choice. Both choices sit within the tolerance of
+    // facing the camera upright, so the swap is a lean one way becoming a
+    // lean the other — bounded by the tolerance itself, never a flip.
+    const step = 0.25;
+    let worst = 0;
+    for (const elevation of [-89, -45, 0, 45, 89]) {
+      let previous = clampedBillboardQuaternion(upright, ...poseAt(170, elevation));
+      for (let azimuth = 170 + step; azimuth <= 190; azimuth += step) {
+        const current = clampedBillboardQuaternion(upright, ...poseAt(azimuth, elevation));
+        worst = Math.max(worst, current.angleTo(previous));
+        previous = current;
+      }
+    }
+    // Twice the tolerance, plus the tracking the camera does over one step.
+    expect(worst / DEG).toBeLessThanOrEqual(2 * (MAX / DEG) + step);
+  });
+
+  test('a home pose with deliberate roll keeps it while inside the tolerance', () => {
+    const tilted = new Quaternion().setFromEuler(new Euler(0, 0, 25 * DEG));
+    const q = clampedBillboardQuaternion(tilted, new Vector3(0, 0, 1), SCREEN_UP, 30 * DEG);
+    expect(q.angleTo(tilted)).toBeCloseTo(0, 9);
+  });
+
+  test('always returns a unit quaternion', () => {
+    for (const { toCamera, cameraUp } of everyAngle()) {
+      const q = clampedBillboardQuaternion(flat, toCamera, cameraUp, 20 * DEG);
+      expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 9);
+    }
   });
 });
 
@@ -133,67 +277,5 @@ describe('apparentSizeScale', () => {
 
   test('a non-positive reference leaves the scale untouched', () => {
     expect(apparentSizeScale(3, 0)).toBe(1);
-  });
-});
-
-describe('roll: the third degree of freedom stays pinned', () => {
-  /** The element's up vector in world space. */
-  const upOf = (q: Quaternion) => new Vector3(0, 1, 0).applyQuaternion(q);
-
-  const cameraAt = (azimuthDeg: number, elevationDeg: number) => {
-    const a = azimuthDeg * DEG;
-    const e = elevationDeg * DEG;
-    return new Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
-  };
-
-  test('an upright element is never rendered upside down, from any angle', () => {
-    // Regression: the minimal rotation used to drag the up vector over with
-    // it, flipping the element as the camera swung round behind it.
-    for (let azimuth = 0; azimuth < 360; azimuth += 5) {
-      for (let elevation = -80; elevation <= 80; elevation += 5) {
-        const q = clampedBillboardQuaternion(upright, cameraAt(azimuth, elevation), 32 * DEG);
-        expect(upOf(q).y).toBeGreaterThanOrEqual(-1e-9);
-      }
-    }
-  });
-
-  test('stays clearly upright with the camera directly behind it', () => {
-    const q = clampedBillboardQuaternion(upright, cameraAt(180, 5), 32 * DEG);
-    expect(upOf(q).y).toBeGreaterThan(0.5);
-  });
-
-  test('the up vector never flips between neighbouring camera angles', () => {
-    // A flip shows up as the up vector reversing over a tiny camera move.
-    let previous = upOf(clampedBillboardQuaternion(upright, cameraAt(0, 10), 32 * DEG));
-    for (let azimuth = 1; azimuth <= 360; azimuth += 1) {
-      const current = upOf(clampedBillboardQuaternion(upright, cameraAt(azimuth, 10), 32 * DEG));
-      expect(current.dot(previous)).toBeGreaterThan(0.9);
-      previous = current;
-    }
-  });
-
-  test('a home pose with deliberate roll keeps it while inside the tolerance', () => {
-    // Roll is pinned to the home pose's own up, not to world up, so a
-    // tilted element stays tilted rather than being levelled.
-    const tilted = new Quaternion().setFromEuler(new Euler(0, 0, 25 * DEG));
-    const q = clampedBillboardQuaternion(tilted, new Vector3(0, 0, 1), 30 * DEG);
-    expect(q.angleTo(tilted)).toBeCloseTo(0, 9);
-  });
-
-  test("a camera along the element's own up axis is handled without NaN", () => {
-    // The up vector cannot disambiguate roll here; the fallback must still
-    // produce a usable orientation.
-    const q = clampedBillboardQuaternion(upright, new Vector3(0, 1, 0), 0);
-    for (const v of [q.x, q.y, q.z, q.w]) expect(Number.isNaN(v)).toBe(false);
-    expect(angleBetween(facing(q), new Vector3(0, 1, 0))).toBeCloseTo(0, 6);
-  });
-
-  test('always returns a unit quaternion', () => {
-    for (let azimuth = 0; azimuth < 360; azimuth += 17) {
-      for (const elevation of [-70, -20, 0, 20, 70]) {
-        const q = clampedBillboardQuaternion(flat, cameraAt(azimuth, elevation), 20 * DEG);
-        expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 9);
-      }
-    }
   });
 });

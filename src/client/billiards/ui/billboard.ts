@@ -20,105 +20,103 @@
  * with big ones while staying pinned to the edge of readability. A
  * `maxAngle` of 0 degenerates to a classic always-face-me billboard.
  *
- * The rule fixes only WHERE THE ELEMENT POINTS — two degrees of freedom.
- * The third, roll about that axis, is pinned separately to the home pose's
- * own up vector. Leaving it implicit is a trap: the natural choice, the
- * minimal rotation from home to the clamped direction, drags the element's
- * up vector along with it, so a camera swinging round behind an element
- * (a turn approaching 180°) rolls it all the way over and renders it
- * upside down. Pointing and roll are separate questions, so they are
- * answered separately.
+ * WHAT THE TOLERANCE MEASURES. The obvious reading of "how far from facing
+ * the camera" is the angle of the element's forward axis, which constrains
+ * two degrees of freedom and leaves the third — roll about that axis —
+ * to whatever the turn happens to produce. That is a trap, and it renders
+ * elements upside down:
  *
- * Pinning roll to the HOME pose's up rather than to world up keeps the
- * rule general: an element that prefers to lie flat still tips up toward
- * the viewer, and an element whose home pose is deliberately tilted keeps
- * that tilt, because within the tolerance the result is exactly `home`.
+ *   - the minimal turn from home drags the element's up vector along with
+ *     it, so a camera swinging round behind an element rolls it right over;
+ *   - and pinning the roll to a world-space reference instead only moves
+ *     the problem, because the reference vanishes exactly when the camera
+ *     looks along it — an overhead camera over a table, say.
+ *
+ * "Upside down" is a screen-space property, so it can only be ruled out
+ * against a screen-space reference. This module therefore measures the
+ * tolerance as the angle of the WHOLE ROTATION between the home pose and
+ * the fully-specified camera-facing pose (pointing at the camera, upright
+ * on screen), and clamps along the geodesic between them. All three
+ * degrees of freedom are then accounted for by the one number, which buys
+ * a guarantee the axis-only reading cannot make:
+ *
+ *   the element's facing is within `maxAngle` of the camera, AND its up
+ *   vector is within `maxAngle` of screen up — always, from every angle.
+ *
+ * Inside the tolerance the result is still exactly `home`, so an element
+ * that prefers to lie flat, or that is deliberately tilted, keeps its pose
+ * for as long as it is legible; past the boundary the tilt is corrected
+ * along with everything else, which is the point.
+ *
+ * One configuration stays ambiguous and always will: a camera exactly
+ * opposite the home pose, where turning left and turning right are mirror
+ * images of each other and equally minimal. Crossing it swaps the choice.
+ * Nothing stateless can avoid that, but the swap is bounded by twice the
+ * tolerance — both choices are within `maxAngle` of facing the camera
+ * upright — so it reads as a lean one way becoming a lean the other, and
+ * `smoothingAlpha` turns it into a settle rather than a jump.
  *
  * Everything here is pure and allocation-free so it can run per element per
  * frame, and so the rule can be tested without a renderer.
  */
 import { Matrix4, Quaternion, Vector3 } from 'three';
 
-/** Local axes, three.js convention: the element faces +z with +y up. */
-const LOCAL_FORWARD = new Vector3(0, 0, 1);
-const LOCAL_UP = new Vector3(0, 1, 0);
-const LOCAL_RIGHT = new Vector3(1, 0, 0);
-
-const _dir = new Vector3();
 const _forward = new Vector3();
-const _axis = new Vector3();
-const _delta = new Quaternion();
-const _upRef = new Vector3();
 const _right = new Vector3();
 const _up = new Vector3();
 const _basis = new Matrix4();
+const _facing = new Quaternion();
 
 /**
  * The orientation an element should render with this frame.
  *
  * @param home      Its preferred pose (parent-space quaternion).
  * @param toCamera  Vector from the element to the camera; need not be unit.
- * @param maxAngle  Tolerance in radians around facing the camera. The result
- *                  is `home` whenever home's forward is already within this
- *                  angle of `toCamera`, and otherwise the smallest rotation
- *                  of `home` that brings it back to exactly this angle.
+ * @param cameraUp  The camera's own up axis in world space — which way is up
+ *                  on screen. Column 1 of the camera's world matrix.
+ * @param maxAngle  Tolerance in radians. The result is `home` whenever home
+ *                  is already within this angle of facing the camera
+ *                  upright, and otherwise the smallest rotation of `home`
+ *                  that brings it back to exactly this angle.
  * @param out       Optional target, to keep the frame loop allocation-free.
  */
 export function clampedBillboardQuaternion(
   home: Quaternion,
   toCamera: Vector3,
+  cameraUp: Vector3,
   maxAngle: number,
   out: Quaternion = new Quaternion(),
 ): Quaternion {
   out.copy(home);
   if (toCamera.lengthSq() < 1e-12) return out;
 
-  _dir.copy(toCamera).normalize();
-  _forward.copy(LOCAL_FORWARD).applyQuaternion(home);
+  facingQuaternion(toCamera, cameraUp, _facing);
 
-  const angle = Math.acos(Math.min(1, Math.max(-1, _forward.dot(_dir))));
+  const angle = out.angleTo(_facing);
   const excess = angle - Math.max(0, maxAngle);
   if (excess <= 0) return out; // still legible from here — hold the home pose
 
-  _axis.crossVectors(_forward, _dir);
-  if (_axis.lengthSq() < 1e-12) {
-    // Facing exactly away from the camera: every axis is "minimal", so pick
-    // the element's own up and turn about that deterministically.
-    _axis.copy(LOCAL_UP).applyQuaternion(home);
-  }
-  _axis.normalize();
-
-  // Where the element now points — the two degrees of freedom the rule owns.
-  _delta.setFromAxisAngle(_axis, excess);
-  _forward.applyQuaternion(_delta);
-
-  return orientTowards(_forward, home, out);
+  // Travel the geodesic just far enough to land on the tolerance boundary.
+  return out.slerp(_facing, excess / angle);
 }
 
 /**
- * Builds the orientation that faces `forward` while keeping the element's
- * up as close as possible to the home pose's up — the third degree of
- * freedom, pinned rather than left to fall out of the turn.
- *
- * With `forward` equal to the home pose's own forward this reproduces
- * `home` exactly, which is what lets the caller treat "inside the
- * tolerance" as "don't touch it".
+ * The pose that faces the camera squarely and sits upright on screen — the
+ * plain billboard, and the anchor the tolerance is measured against.
  */
-function orientTowards(forward: Vector3, home: Quaternion, out: Quaternion): Quaternion {
-  _upRef.copy(LOCAL_UP).applyQuaternion(home);
-  _right.crossVectors(_upRef, forward);
+function facingQuaternion(toCamera: Vector3, cameraUp: Vector3, out: Quaternion): Quaternion {
+  _forward.copy(toCamera).normalize();
+  _right.crossVectors(cameraUp, _forward);
   if (_right.lengthSq() < 1e-12) {
-    // Looking straight along the element's up: its up cannot disambiguate
-    // roll, so fall back to the home pose's right, which is perpendicular
-    // to that up by construction.
-    _right.copy(LOCAL_RIGHT).applyQuaternion(home);
+    // A camera whose up axis is its view direction is not a camera any real
+    // one can be in, but the rule must still answer: any perpendicular does.
+    _right.set(_forward.y, -_forward.x, 0);
+    if (_right.lengthSq() < 1e-12) _right.set(1, 0, 0);
   }
   _right.normalize();
-  _up.crossVectors(forward, _right).normalize();
-  // Re-derive right from the orthonormalised pair so the basis is exact.
-  _right.crossVectors(_up, forward);
+  _up.crossVectors(_forward, _right);
 
-  _basis.makeBasis(_right, _up, forward);
+  _basis.makeBasis(_right, _up, _forward);
   return out.setFromRotationMatrix(_basis);
 }
 
