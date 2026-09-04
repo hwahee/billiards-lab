@@ -9,7 +9,7 @@ import { CanvasTexture, SRGBColorSpace } from 'three';
 
 import { PANEL_INK_DIM, PANEL_SIZE, panelBar, panelFrame, panelText } from './paint';
 
-export function createPanelCanvas(size = PANEL_SIZE): {
+export function createPanelCanvas(size: { width: number; height: number } = PANEL_SIZE): {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
 } {
@@ -66,6 +66,66 @@ export function makeReadoutPanelTexture({
     color: PANEL_INK_DIM,
   });
   panelBar(ctx, { x: 40, y: 150, width: width - 80, height: 34, value: power, color: accent });
+
+  return finishPanelTexture(canvas);
+}
+
+const BUTTON_SIZE = { width: 384, height: 152 } as const;
+
+/**
+ * A filled pill with a label — the face of an in-scene <SceneButton>. Solid
+ * rather than outlined, because a button has to read as pressable at a
+ * glance from across the table.
+ */
+export function makeActionButtonTexture({
+  label,
+  accent,
+}: {
+  label: string;
+  accent: string;
+}): CanvasTexture {
+  const { canvas, ctx } = createPanelCanvas(BUTTON_SIZE);
+  const { width, height } = BUTTON_SIZE;
+
+  panelFrame(ctx, { width, height, accent, inset: 6, radius: height / 2 });
+  const inset = 20;
+  panelBar(ctx, {
+    x: inset,
+    y: inset,
+    width: width - inset * 2,
+    height: height - inset * 2,
+    value: 1,
+    color: accent,
+  });
+  panelText(ctx, {
+    text: label,
+    x: width / 2,
+    y: height / 2 + 2,
+    size: 58,
+    weight: 'bold',
+    align: 'center',
+    color: '#0b121a',
+  });
+
+  return finishPanelTexture(canvas);
+}
+
+const CHIP_SIZE = { width: 256, height: 112 } as const;
+
+/** A small pill showing one value — a label for a widget that is its own control. */
+export function makeChipTexture({ text, accent }: { text: string; accent: string }): CanvasTexture {
+  const { canvas, ctx } = createPanelCanvas(CHIP_SIZE);
+  const { width, height } = CHIP_SIZE;
+
+  panelFrame(ctx, { width, height, accent, inset: 8, radius: height / 2 });
+  panelText(ctx, {
+    text,
+    x: width / 2,
+    y: height / 2 + 2,
+    size: 52,
+    weight: 'bold',
+    align: 'center',
+  });
 
   return finishPanelTexture(canvas);
 }

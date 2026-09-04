@@ -66,6 +66,9 @@ export const ko: Record<MessageKey, string> = {
   'billiards.preset.carom': '캐롬 (4구)',
   'billiards.preset.pool': '포켓볼 (15구+큐볼)',
   'billiards.aimScheme.label': '조준 방식',
+  'billiards.aimScheme.splitControls': '분리 조작',
+  'billiards.aimScheme.splitControls.hint':
+    '하나씩 따로: 고리를 돌려 방향, 기둥을 끌어 세기, 그리고 치기 버튼.',
   'billiards.aimScheme.orbitKnob': '궤도 손잡이',
   'billiards.aimScheme.orbitKnob.hint':
     '공 주위의 손잡이를 드래그하세요 — 각도가 방향, 거리가 세기입니다.',

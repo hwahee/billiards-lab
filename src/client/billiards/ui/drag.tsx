@@ -125,3 +125,39 @@ export function DragSurface({
     </mesh>
   );
 }
+
+/**
+ * The same idea for a widget that is NOT on the cloth: an invisible plane
+ * lying in its PARENT GROUP's plane, reporting the hit in that group's own
+ * local metres. Mount it as a sibling of the widget — inside the
+ * <FacingGroup> it belongs to — and a drag keeps tracking after the pointer
+ * leaves the widget, in the same coordinates the widget is laid out in.
+ *
+ * `size` is the capture extent in local metres, centred on the group origin.
+ */
+export function PlaneDragSurface({
+  size = 8,
+  onMove,
+  onRelease,
+}: {
+  size?: number;
+  onMove: (local: { x: number; y: number }) => void;
+  onRelease: () => void;
+}) {
+  return (
+    <mesh
+      onPointerMove={(event: ThreeEvent<PointerEvent>) => {
+        event.stopPropagation();
+        if (!event.uv) return;
+        onMove({ x: (event.uv.x - 0.5) * size, y: (event.uv.y - 0.5) * size });
+      }}
+      onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+        event.stopPropagation();
+        onRelease();
+      }}
+    >
+      <planeGeometry args={[size, size]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  );
+}

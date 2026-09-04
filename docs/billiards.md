@@ -80,7 +80,11 @@ invisible ~1e-15 m correction. Drags apply locally first (the same shared
 placement rules), sync on a trailing throttle, and briefly ignore pushed
 snapshots (own echoes), so the pointer never fights the authority. The
 strike _preview_ (`predictPaths`) also runs client-side — like the replay,
-it is a pure function of the last snapshot.
+it is a pure function of the last snapshot. Aiming changes that input on
+every pointer move, and each change costs a roll-out plus a fat-line
+geometry rebuild per ball, so the preview is throttled (`useThrottled`) and
+its scene-space points derived once per result: the widget under the hand
+tracks every move, and the paths follow a fraction of a second behind.
 
 ## 2-player turns
 
@@ -279,12 +283,37 @@ a scheme is one entry in `AIM_SCHEMES`. Both mount points gate on
 `activeAimCue(sim)`, so no scheme has to know about turn order, a potted
 cue ball or a shot in flight.
 
-| Scheme           | Gesture                                                           | What it asks of the substrate                              |
-| ---------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Orbit knob**   | Drag a knob around the ball: bearing aims, distance sets power    | An upright readout holding a fixed world pose (32°)        |
-| **Pull the cue** | Drag the cue back; the ball goes the other way, distance is power | A home pose that changes at runtime — it yaws with the aim |
-| **Dial panel**   | Drag on a floating panel: dial for direction, slider for power    | An interactive panel: near-billboard (12°), constant size  |
-| **Screen HUD**   | A dial and slider pinned to the corner of the view                | The HUD layer instead — and, being DOM, keyboard operable  |
+| Scheme             | Gesture                                                            | What it asks of the substrate                              |
+| ------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- |
+| **Split controls** | Sweep a fixed-radius ring to aim; drag an upright column for power | A drag in a widget's own upright plane, not on the cloth   |
+| **Orbit knob**     | Drag a knob around the ball: bearing aims, distance sets power     | An upright readout holding a fixed world pose (32°)        |
+| **Pull the cue**   | Drag the cue back; the ball goes the other way, distance is power  | A home pose that changes at runtime — it yaws with the aim |
+| **Dial panel**     | Drag on a floating panel: dial for direction, slider for power     | An interactive panel: near-billboard (12°), constant size  |
+| **Screen HUD**     | A dial and slider pinned to the corner of the view                 | The HUD layer instead — and, being DOM, keyboard operable  |
+
+**Split controls is the default**, because it is the only one where the two
+quantities cannot interfere. Every other scheme reads direction and power
+out of a single drag, which sounds efficient and plays badly: nudging the
+aim always disturbs the power, so landing a shot takes several corrective
+passes. Here a sweep sets only the bearing (the ring's radius is fixed) and
+a lift sets only the power (the column is vertical) — orthogonal in meaning
+and in motion, so they cannot be confused mid-shot.
+
+## Taking the shot in the view
+
+`<SceneButton>` is the third thing an in-world UI needs, after readouts and
+drag surfaces, and the **Strike** button over the cue ball is the scene's
+own — not any scheme's — so every way of aiming is finished the same way.
+It appears under exactly the same condition as the aim widgets
+(`activeAimCue`), so it is never a button that does nothing.
+
+Two things a 3D button gets wrong if written casually: it has to claim the
+shared drag for the press, or pressing it also orbits the camera (the camera
+controls listen to the canvas directly and never see a stopped
+propagation); and it must not wait to see its own claim come back through
+React, because a quick click puts the release in the same frame as the
+press. It tracks the press in a ref and lets the claim be about the camera
+only.
 
 `aim/model.ts` holds what every scheme shares: the speed ↔ power mapping,
 the power colour ramp, pointer → table-plane geometry, and the keyboard

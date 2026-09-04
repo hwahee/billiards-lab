@@ -23,7 +23,14 @@ import {
   useDragHandle,
   useOwnedTexture,
 } from '../../ui';
-import { distanceToPower, offsetFromCue, powerColor, powerToSpeed, speedToPower } from '../model';
+import {
+  circlePoints,
+  distanceToPower,
+  offsetFromCue,
+  powerColor,
+  powerToSpeed,
+  speedToPower,
+} from '../model';
 import type { AimSchemeProps } from '../scheme';
 
 /** Knob distance from the cue ball at min / max power (m). */
@@ -34,13 +41,6 @@ const RING_LIFT = 0.003;
 
 const PANEL_MAX_ANGLE = (32 * Math.PI) / 180;
 const PANEL_RESPONSIVENESS = 9;
-
-function circlePoints(radius: number, segments = 72): [number, number, number][] {
-  return Array.from({ length: segments + 1 }, (_, i) => {
-    const a = (i / segments) * Math.PI * 2;
-    return [Math.cos(a) * radius, 0, Math.sin(a) * radius];
-  });
-}
 
 export function OrbitKnobAim({ cue, shot, onShotChange, ballRadius }: AimSchemeProps) {
   const drag = useDragHandle('aim');

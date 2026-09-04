@@ -25,8 +25,12 @@ import { BilliardsScene } from '../billiards/scene';
 import type { SimEvent } from '@shared/billiards/game-state';
 
 import { useBilliardsSim } from '../billiards/use-billiards';
+import { useThrottled } from '../billiards/use-throttled';
 import { useI18n } from '../i18n/locale-context';
 import { TESTID } from '../testing/testids';
+
+/** How often the predicted paths may be recomputed while aiming (ms). */
+const PREVIEW_INTERVAL_MS = 120;
 
 function BallReadout({ ball }: { ball: BallState }) {
   const { t } = useI18n();
@@ -96,14 +100,24 @@ export function BilliardsPage() {
 
   // Exact preview: apply the current strike to a clone of the current layout
   // and run the same deterministic engine to rest.
+  //
+  // Aiming changes the shot on every pointer move, and each change costs a
+  // full roll-out (a few ms for a carom rack, ~20 ms for a pool rack) plus a
+  // rebuild of one fat-line geometry per ball. Doing that at pointer rate is
+  // what makes a drag feel heavy, so the preview runs on its own slower
+  // clock: the widget under the hand still tracks every single move, and the
+  // paths follow a fraction of a second behind — which is all a preview of
+  // where the balls will end up needs to do.
+  const previewShot = useThrottled(sim.shot, PREVIEW_INTERVAL_MS);
+  const previewSnapshot = useThrottled(sim.snapshot, PREVIEW_INTERVAL_MS);
   const prediction = useMemo(() => {
     if (!showPrediction || sim.phase !== 'idle') return null;
-    const balls = cloneBalls(sim.snapshot);
+    const balls = cloneBalls(previewSnapshot);
     const cue = balls.find((ball) => ball.id === preset.cueBallId);
     if (!cue || cue.potted) return null;
-    strike(cue, toStrikeInput(sim.shot));
+    strike(cue, toStrikeInput(previewShot));
     return predictPaths(balls, preset.table, sim.physics);
-  }, [showPrediction, sim.phase, sim.snapshot, sim.shot, sim.physics, preset]);
+  }, [showPrediction, sim.phase, previewSnapshot, previewShot, sim.physics, preset]);
 
   const orderedSnapshot = preset.ballSpecs
     .map((spec) => sim.snapshot.find((ball) => ball.id === spec.id))
@@ -117,7 +131,12 @@ export function BilliardsPage() {
       </header>
       <div className="billiards-layout">
         <div className="billiards-canvas" data-testid={TESTID.billiards.canvas}>
-          <BilliardsScene sim={sim} prediction={prediction} aimScheme={aimScheme} />
+          <BilliardsScene
+            sim={sim}
+            prediction={prediction}
+            aimScheme={aimScheme}
+            strikeLabel={t('billiards.strike')}
+          />
           {/* Screen-space widgets over the 3D view. The layer owns the
               geography; each widget just names an anchor, so the aim HUD and
               the status hint coexist without knowing about each other. */}

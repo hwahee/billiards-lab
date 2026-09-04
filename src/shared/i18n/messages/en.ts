@@ -70,6 +70,9 @@ export const en = {
   'billiards.preset.carom': 'Carom (4-ball)',
   'billiards.preset.pool': 'Pool (15-ball + cue)',
   'billiards.aimScheme.label': 'Aim style',
+  'billiards.aimScheme.splitControls': 'Split controls',
+  'billiards.aimScheme.splitControls.hint':
+    'One at a time: sweep the ring to aim, drag the column for power, then press Strike.',
   'billiards.aimScheme.orbitKnob': 'Orbit knob',
   'billiards.aimScheme.orbitKnob.hint':
     'Drag the knob around the ball — bearing aims, distance sets power.',

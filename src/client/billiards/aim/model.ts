@@ -68,6 +68,14 @@ export function offsetFromCue(
   };
 }
 
+/** A circle on the cloth, as three.js points — the outline every ring widget draws. */
+export function circlePoints(radius: number, segments = 72): [number, number, number][] {
+  return Array.from({ length: segments + 1 }, (_, i) => {
+    const a = (i / segments) * Math.PI * 2;
+    return [Math.cos(a) * radius, 0, Math.sin(a) * radius];
+  });
+}
+
 /** Maps a distance from the ball onto power, between two radii. */
 export function distanceToPower(distance: number, minRadius: number, maxRadius: number): number {
   return clamp01((distance - minRadius) / (maxRadius - minRadius));
