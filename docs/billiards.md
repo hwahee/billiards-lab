@@ -13,24 +13,26 @@ played back in 3D. Because the engine is a fixed-timestep pure function, the
 
 ## Where things live
 
-| Piece                                                      | Path                                            |
-| ---------------------------------------------------------- | ----------------------------------------------- |
-| Physics engine (pure TS, no rendering deps), incl. pockets | `src/shared/billiards/physics.ts`               |
-| Engine tests (determinism, draw/follow, cushions, pockets) | `src/shared/billiards/physics.test.ts`          |
-| Serializable game state, presets, placement, tray          | `src/shared/billiards/game-state.ts`            |
-| Game-state tests (JSON round-trip, collision log, rack)    | `src/shared/billiards/game-state.test.ts`       |
-| Room wire protocol (snapshot type, command validators)     | `src/shared/billiards/room.ts`                  |
-| Server-authoritative room service (owns state, tick loop)  | `src/server/services/billiards/room-service.ts` |
-| Room HTTP surface (`GET`/`POST /api/billiards`)            | `src/server/routes/billiards.ts`                |
-| Room integration tests (over HTTP)                         | `src/server/http/billiards.integration.test.ts` |
-| Presentation config (ball specs/colours, default shot)     | `src/client/billiards/config.ts`                |
-| Client room state (commands, local shot replay)            | `src/client/billiards/use-billiards.ts`         |
-| UI substrate (billboard rule, panels, HUD, drag)           | `src/client/billiards/ui/`                      |
-| Billboard maths tests                                      | `src/client/billiards/ui/billboard.test.ts`     |
-| Aim schemes (registry, contract, shared model)             | `src/client/billiards/aim/`                     |
-| 3D scene (table, pockets, balls, prediction lines)         | `src/client/billiards/scene.tsx`                |
-| Control panel (incl. preset selector)                      | `src/client/billiards/controls.tsx`             |
-| Page                                                       | `src/client/pages/billiards-page.tsx`           |
+| Piece                                                      | Path                                                                       |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Physics engine (pure TS, no rendering deps), incl. pockets | `src/shared/billiards/physics.ts`                                          |
+| Engine tests (determinism, draw/follow, cushions, pockets) | `src/shared/billiards/physics.test.ts`                                     |
+| Bit-identity checks + the pre-optimisation reference       | `src/shared/billiards/physics.determinism.test.ts`, `physics.reference.ts` |
+| Prediction benchmark / golden fixture regeneration         | `scripts/billiards-bench.ts`, `scripts/billiards-golden.ts`                |
+| Serializable game state, presets, placement, tray          | `src/shared/billiards/game-state.ts`                                       |
+| Game-state tests (JSON round-trip, collision log, rack)    | `src/shared/billiards/game-state.test.ts`                                  |
+| Room wire protocol (snapshot type, command validators)     | `src/shared/billiards/room.ts`                                             |
+| Server-authoritative room service (owns state, tick loop)  | `src/server/services/billiards/room-service.ts`                            |
+| Room HTTP surface (`GET`/`POST /api/billiards`)            | `src/server/routes/billiards.ts`                                           |
+| Room integration tests (over HTTP)                         | `src/server/http/billiards.integration.test.ts`                            |
+| Presentation config (ball specs/colours, default shot)     | `src/client/billiards/config.ts`                                           |
+| Client room state (commands, local shot replay)            | `src/client/billiards/use-billiards.ts`                                    |
+| UI substrate (billboard rule, panels, HUD, drag)           | `src/client/billiards/ui/`                                                 |
+| Billboard maths tests                                      | `src/client/billiards/ui/billboard.test.ts`                                |
+| Aim schemes (registry, contract, shared model)             | `src/client/billiards/aim/`                                                |
+| 3D scene (table, pockets, balls, prediction lines)         | `src/client/billiards/scene.tsx`                                           |
+| Control panel (incl. preset selector)                      | `src/client/billiards/controls.tsx`                                        |
+| Page                                                       | `src/client/pages/billiards-page.tsx`                                      |
 
 ## Server-authoritative architecture
 
@@ -80,7 +82,13 @@ invisible ~1e-15 m correction. Drags apply locally first (the same shared
 placement rules), sync on a trailing throttle, and briefly ignore pushed
 snapshots (own echoes), so the pointer never fights the authority. The
 strike _preview_ (`predictPaths`) also runs client-side — like the replay,
-it is a pure function of the last snapshot.
+it is a pure function of the last snapshot. Aiming changes its input on
+every pointer move, and pointer events arrive at the mouse's polling rate
+rather than the display's, so `usePredictedPaths` records the inputs during
+render and does the work from a `requestAnimationFrame` callback: a burst of
+moves computes once, for the newest values. `PredictionLines` likewise
+derives its scene-space point arrays once per result, because a fat line
+rebuilds its whole geometry whenever it is handed a new array.
 
 ## 2-player turns
 
@@ -293,6 +301,70 @@ rather than per scheme. Scheme-specific geometry stays with its scheme —
 the dial panel declares its zone layout once, in uv, and both its painter
 and its hit test read that same object, since the two drifting apart is the
 bug that shape of widget invites.
+
+## Taking the shot in the view
+
+`<SceneButton>` is the third thing an in-world UI needs, after readouts and
+drag surfaces, and the **Strike** button over the cue ball is the scene's own
+— not any aim scheme's — so every way of aiming is finished the same way. It
+appears under exactly the condition the aim widgets do (`activeAimCue`), so
+it is never a button that does nothing.
+
+Two things a 3D button gets wrong if written casually: it has to claim the
+shared drag for the press, or pressing it also orbits the camera (the camera
+controls listen to the canvas directly and never see a stopped propagation);
+and it must not wait to see its own claim come back through React, because a
+quick click puts the release in the same frame as the press. It tracks the
+press in a ref and lets the claim be about the camera only.
+
+## Engine cost (read before "tidying" the hot path)
+
+A pool prediction rolls sixteen balls out to rest at 600 Hz, and it runs
+while the player aims, so its cost lands directly in the interaction. Three
+things in `stepPhysics` are shaped by that, and all three look like
+over-cleverness until you know what they cost:
+
+- **`Math.hypot` is avoided on rejection paths.** It costs ~33 ns a call
+  against ~3 ns for `dx*dx + dy*dy`, and at one point it was ~77% of the
+  engine. Where a call only answers a yes/no question about a threshold, the
+  squared form decides it — but only outside a relative band
+  (`COMPARE_BAND`) around the threshold, inside which the exact call still
+  runs. So no decision is ever made by the cheaper form anywhere the two
+  could disagree. Do not "simplify" these back, and do not widen them to
+  replace a `Math.hypot` whose _value_ is used.
+- **The pair pass rejects in the loop, not in the call.** It is 120 pairs
+  per step for a full rack and almost none are near touching. The survivors
+  still go through `collideBallPair` in ascending `(i, j)` order, which
+  matters: the pass is Gauss–Seidel, de-penetrating positions that later
+  pairs then measure against. Reordering it, or culling with a bound that is
+  not provably conservative, changes results.
+- **Balls that are standing perfectly still skip two steps.** For such a
+  ball `integrateFriction` reduces to writing five zeros and
+  `collideWithCushions` cannot write at all. The zeros are written rather
+  than skipped, because they are also what normalises a `-0` left by an
+  earlier step — and the engine does produce those. Pocket capture keeps
+  running, since a ball at rest in a mouth must drop.
+
+`scripts/billiards-bench.ts` measures it. As of the change that introduced
+all this, p50 per prediction: carom 1.09 ms, pool 6.60 ms into the rack,
+1.04 ms for a shot that misses it.
+
+**Any change here has to be bit-identical**, or the preview stops matching
+the live run and the client replay stops matching the server.
+`physics.determinism.test.ts` is what enforces that. It replays a generated
+corpus through both the engine and `physics.reference.ts` — a verbatim copy
+of the engine before any of this — comparing every step component-wise with
+`Object.is`, so `-0` is not quietly accepted as `0`, and comparing the event
+sequences too. The corpus includes states the engine would not reach on its
+own: balls parked in and beside pocket mouths, pairs exactly touching and
+slightly overlapping, velocities just under the rest thresholds. A second
+check replays `__fixtures__/golden-steps.json`, recorded before the
+optimisation existed, so editing the engine and its reference together still
+fails.
+
+If the physics is ever meant to change, change it, watch both fail, and
+regenerate the fixture deliberately (`bun run scripts/billiards-golden.ts`)
+— saying so in the commit.
 
 ## UI variables
 
