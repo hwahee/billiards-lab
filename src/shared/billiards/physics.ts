@@ -251,15 +251,51 @@ export type CollisionEvent =
   | { type: 'ball'; ballId: string; otherId: string }
   | { type: 'pocket'; ballId: string };
 
+/**
+ * Relative width of the band around a threshold in which a squared compare
+ * is not trusted.
+ *
+ * `Math.hypot` is the engine's single biggest cost — about 33 ns a call
+ * against 3 ns for `dx*dx + dy*dy`, and a full pool rack runs 120 of them per
+ * step in the pair loop alone. Most of those calls only ever answer a
+ * yes/no question about a threshold, and for that the squared form does just
+ * as well *away from the threshold*.
+ *
+ * It is not bit-identical AT the threshold, so it is never used to decide
+ * there: outside this band the exact call still runs. The band is ~1e9 times
+ * the worst rounding error of either form at billiards-table magnitudes, so
+ * a decision made outside it cannot differ from the one `Math.hypot` would
+ * have made — and inside it, nothing changed at all.
+ */
+const COMPARE_BAND = 1e-9;
+
 function ballAtRest(ball: BallState, params: PhysicsParams): boolean {
-  return (
-    Math.hypot(ball.velocity.x, ball.velocity.y) < params.stopSpeed &&
-    Math.hypot(ball.spin.x, ball.spin.y, ball.spin.z) < params.stopSpin
-  );
+  const v = ball.velocity;
+  const w = ball.spin;
+
+  const speedSq = v.x * v.x + v.y * v.y;
+  const stopSpeedSq = params.stopSpeed * params.stopSpeed;
+  if (speedSq > stopSpeedSq * (1 + COMPARE_BAND)) return false;
+  if (speedSq > stopSpeedSq * (1 - COMPARE_BAND) && !(Math.hypot(v.x, v.y) < params.stopSpeed)) {
+    return false;
+  }
+
+  const spinSq = w.x * w.x + w.y * w.y + w.z * w.z;
+  const stopSpinSq = params.stopSpin * params.stopSpin;
+  if (spinSq > stopSpinSq * (1 + COMPARE_BAND)) return false;
+  if (spinSq > stopSpinSq * (1 - COMPARE_BAND)) {
+    return Math.hypot(w.x, w.y, w.z) < params.stopSpin;
+  }
+  return true;
 }
 
 export function isAtRest(balls: readonly BallState[], params: PhysicsParams): boolean {
-  return balls.every((ball) => ballAtRest(ball, params));
+  // A plain loop rather than `.every()`: predictPaths asks this once per
+  // step, and the callback would be an allocation on every one of them.
+  for (const ball of balls) {
+    if (!ballAtRest(ball, params)) return false;
+  }
+  return true;
 }
 
 export function cloneBalls(balls: readonly BallState[]): BallState[] {
@@ -413,6 +449,25 @@ function collideWithCushions(
 }
 
 /**
+ * How far from the table's centre line a ball must be before any pocket can
+ * possibly contain it: the nearest pocket centre's |y|, less its radius.
+ *
+ * Every pocket sits on a rail, so this one comparison clears the whole
+ * middle of the table — which is where most balls are — without looking at a
+ * single pocket. Purely a function of the table, so it is computed once per
+ * step rather than once per ball.
+ */
+function pocketFreeBand(table: TableConfig): number {
+  if (!table.pockets) return Infinity;
+  let band = Infinity;
+  for (const pocket of table.pockets) {
+    const reach = Math.abs(pocket.y) - pocket.radius;
+    if (reach < band) band = reach;
+  }
+  return band;
+}
+
+/**
  * Checks `ball` against every pocket mouth on `table` and captures it (sets
  * `potted`, freezes it, teleports it to a resting spot just outside the
  * rail) if it is centred within a pocket's radius and moving at or below
@@ -423,15 +478,32 @@ function checkPockets(
   ball: BallState,
   table: TableConfig,
   params: PhysicsParams,
+  /**
+   * Distance from the axis inside which no pocket can reach — see
+   * `pocketFreeBand`. Anything nearer the middle of the table than this is
+   * cleared without touching a single pocket.
+   */
+  freeBandY: number,
   events?: CollisionEvent[],
 ): void {
   if (!table.pockets || ball.potted) return;
-  const speed = Math.hypot(ball.velocity.x, ball.velocity.y);
-  if (speed > params.pocketCaptureSpeed) return;
+  if (ball.position.y < freeBandY && ball.position.y > -freeBandY) return;
+  const v = ball.velocity;
+  const speedSq = v.x * v.x + v.y * v.y;
+  const captureSq = params.pocketCaptureSpeed * params.pocketCaptureSpeed;
+  if (speedSq > captureSq * (1 + COMPARE_BAND)) return;
+  if (
+    speedSq > captureSq * (1 - COMPARE_BAND) &&
+    Math.hypot(v.x, v.y) > params.pocketCaptureSpeed
+  ) {
+    return;
+  }
 
   for (const pocket of table.pockets) {
-    const dx = ball.position.x - pocket.x;
+    // The pockets on the far rail are ruled out on one axis alone.
     const dy = ball.position.y - pocket.y;
+    if (dy > pocket.radius || dy < -pocket.radius) continue;
+    const dx = ball.position.x - pocket.x;
     if (dx * dx + dy * dy > pocket.radius * pocket.radius) continue;
 
     ball.potted = true;
@@ -462,6 +534,11 @@ function collideBallPair(
   const m = params.ballMass;
   const dx = b.position.x - a.position.x;
   const dy = b.position.y - a.position.y;
+  // The overwhelming majority of pairs are nowhere near touching, and this
+  // rejects them without the exact distance.
+  const contactSq = 4 * R * R;
+  const distSq = dx * dx + dy * dy;
+  if (distSq > contactSq * (1 + COMPARE_BAND)) return;
   const dist = Math.hypot(dx, dy);
   if (dist >= 2 * R || dist === 0) return;
 
@@ -519,18 +596,68 @@ export function stepPhysics(
   dt: number,
   events?: CollisionEvent[],
 ): void {
+  const freeBandY = pocketFreeBand(table);
   for (const ball of balls) {
     if (ball.potted) continue;
-    integrateFriction(ball, params, dt);
-    ball.position.x += ball.velocity.x * dt;
-    ball.position.y += ball.velocity.y * dt;
+    const v = ball.velocity;
+    const w = ball.spin;
+    // Most balls are standing perfectly still: in a typical pool shot one of
+    // sixteen is moving, and the other fifteen are integrated for nothing.
+    // Two of the five things below are provably identity operations on such
+    // a ball, and skipping them is where nearly all of this engine's cost in
+    // a crowded rack goes.
+    const asleep = v.x === 0 && v.y === 0 && w.x === 0 && w.y === 0 && w.z === 0;
+    if (asleep) {
+      // integrateFriction on a still ball reduces to exactly these five
+      // stores: the contact slip is 0, so `slip > slipDecayPerStep` is false
+      // for any non-negative sliding friction and the rolling branch is
+      // taken; there `speed = 0 <= max(dv, stopSpeed)` always holds, and
+      // `|w.z| = 0 <= dwz` always holds. Written rather than skipped because
+      // these stores are also what normalises a -0 left by an earlier step.
+      v.x = 0;
+      v.y = 0;
+      w.x = 0;
+      w.y = 0;
+      w.z = 0;
+    } else {
+      integrateFriction(ball, params, dt);
+    }
+    ball.position.x += v.x * dt;
+    ball.position.y += v.y * dt;
     integrateOrientation(ball, dt);
-    collideWithCushions(ball, table, params, events);
-    checkPockets(ball, table, params, events);
+    // Every branch in collideWithCushions is guarded by a non-zero velocity
+    // component, so a still ball cannot rebound; the call writes nothing.
+    if (!asleep) collideWithCushions(ball, table, params, events);
+    // checkPockets, by contrast, MUST run: a ball at rest in a pocket mouth
+    // is captured, and that is what makes a slow roll-in drop.
+    checkPockets(ball, table, params, freeBandY, events);
   }
+
+  // The pair pass is the single most expensive thing the engine does — 120
+  // pairs per step for a full pool rack — and almost every pair is nowhere
+  // near touching. Rejecting those here, rather than inside the call, is
+  // worth it purely for the calls it does not make; the survivors still go
+  // through collideBallPair, in the same ascending (i, j) order, and it
+  // re-checks the same condition on the way in.
+  const pairRejectSq = 4 * params.ballRadius * params.ballRadius * (1 + COMPARE_BAND);
   for (let i = 0; i < balls.length; i += 1) {
+    const a = balls[i]!;
+    if (a.potted) continue;
+    const ap = a.position;
+    // Held in locals across the inner loop; nothing else in this pass can
+    // move `a`, so they are only refreshed after a contact that might have.
+    let ax = ap.x;
+    let ay = ap.y;
     for (let j = i + 1; j < balls.length; j += 1) {
-      collideBallPair(balls[i]!, balls[j]!, params, events);
+      const b = balls[j]!;
+      if (b.potted) continue;
+      const bp = b.position;
+      const dx = bp.x - ax;
+      const dy = bp.y - ay;
+      if (dx * dx + dy * dy > pairRejectSq) continue;
+      collideBallPair(a, b, params, events);
+      ax = ap.x;
+      ay = ap.y;
     }
   }
 }
@@ -561,9 +688,14 @@ export function predictPaths(
     stepPhysics(sim, table, params, SIM_DT);
     if (step % sampleSteps === 0) {
       for (let i = 0; i < sim.length; i += 1) {
-        const point = { ...sim[i]!.position };
-        const last = paths[i]!.points[paths[i]!.points.length - 1]!;
-        if (point.x !== last.x || point.y !== last.y) paths[i]!.points.push(point);
+        // Compare before allocating: most samples of a still ball are
+        // discarded, and there are tens of thousands of them in a pool shot.
+        const position = sim[i]!.position;
+        const points = paths[i]!.points;
+        const last = points[points.length - 1]!;
+        if (position.x !== last.x || position.y !== last.y) {
+          points.push({ x: position.x, y: position.y });
+        }
       }
     }
     if (isAtRest(sim, params)) break;

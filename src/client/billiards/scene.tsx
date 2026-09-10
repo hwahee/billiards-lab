@@ -31,8 +31,18 @@ import { isOnFelt, trayFootprint } from '@shared/billiards/game-state';
 import { DEFAULT_PARAMS, type PredictedPath, type TableConfig } from '@shared/billiards/physics';
 
 import { AIM_SCHEMES, activeAimCue, type AimSchemeId } from './aim';
+import { powerColor, speedToPower } from './aim/model';
 import { ballSpec, PRESETS } from './config';
-import { DragScopeProvider, DragSurface, useDragScope, type DragScope } from './ui';
+import {
+  DragScopeProvider,
+  DragSurface,
+  FacingGroup,
+  makeActionButtonTexture,
+  SceneButton,
+  useDragScope,
+  useOwnedTexture,
+  type DragScope,
+} from './ui';
 import { makeBallTexture, makeNumberedBallTexture } from './textures';
 import type { BilliardsSim } from './use-billiards';
 
@@ -321,30 +331,40 @@ function BallMeshes({ sim, scope }: { sim: BilliardsSim; scope: DragScope }) {
   );
 }
 
+/**
+ * The predicted paths.
+ *
+ * This subtree re-renders whenever anything on the page changes — every
+ * pointer move of an aim drag, for one — but a path is hundreds of points
+ * and a fat line rebuilds its whole geometry when it is handed a new array.
+ * So the scene-space arrays are derived once per set of paths: an unchanged
+ * prediction then gives <Line> the identical array and costs nothing.
+ */
 function PredictionLines({ paths }: { paths: PredictedPath[] }) {
+  const lines = useMemo(
+    () =>
+      paths
+        .filter((path) => path.points.length >= 2)
+        .map((path) => ({
+          ballId: path.ballId,
+          color: ballSpec(path.ballId).color,
+          points: path.points.map((p) => [p.x, PATH_LIFT, -p.y] as [number, number, number]),
+          end: path.points[path.points.length - 1]!,
+        })),
+    [paths],
+  );
   return (
     <>
-      {paths.map((path) => {
-        if (path.points.length < 2) return null;
-        const spec = ballSpec(path.ballId);
-        const end = path.points[path.points.length - 1]!;
-        return (
-          <group key={path.ballId}>
-            <Line
-              points={path.points.map((p) => [p.x, PATH_LIFT, -p.y] as const)}
-              color={spec.color}
-              lineWidth={1.5}
-              transparent
-              opacity={0.6}
-            />
-            {/* Ghost of the predicted resting position. */}
-            <mesh position={[end.x, BALL_RADIUS, -end.y]}>
-              <sphereGeometry args={[BALL_RADIUS, 16, 12]} />
-              <meshStandardMaterial color={spec.color} transparent opacity={0.25} />
-            </mesh>
-          </group>
-        );
-      })}
+      {lines.map((line) => (
+        <group key={line.ballId}>
+          <Line points={line.points} color={line.color} lineWidth={1.5} transparent opacity={0.6} />
+          {/* Ghost of the predicted resting position. */}
+          <mesh position={[line.end.x, BALL_RADIUS, -line.end.y]}>
+            <sphereGeometry args={[BALL_RADIUS, 16, 12]} />
+            <meshStandardMaterial color={line.color} transparent opacity={0.25} />
+          </mesh>
+        </group>
+      ))}
     </>
   );
 }
@@ -361,14 +381,48 @@ function Aim({ sim, schemeId }: { sim: BilliardsSim; schemeId: AimSchemeId }) {
   return <Scene cue={cue} shot={sim.shot} onShotChange={sim.setShot} ballRadius={BALL_RADIUS} />;
 }
 
+/**
+ * Take the shot without leaving the view. It belongs to the scene rather
+ * than to any one aim scheme, so every way of aiming is finished the same
+ * way — and it appears under exactly the condition the aim widgets do
+ * (`activeAimCue`), so it is never a button that does nothing.
+ *
+ * Pinned to the cue ball and pinned square-on (`maxAngle = 0`): a target you
+ * have to hit is the one thing that should not lean away from you. Its label
+ * is passed in, since the locale lives outside the canvas.
+ */
+function StrikeButton({ sim, label }: { sim: BilliardsSim; label: string }) {
+  const cue = activeAimCue(sim);
+  const accent = powerColor(speedToPower(sim.shot.speed));
+  const texture = useOwnedTexture(
+    useMemo(() => makeActionButtonTexture({ label, accent }), [label, accent]),
+  );
+  if (!cue) return null;
+  return (
+    <FacingGroup
+      position={[cue.position.x, BALL_RADIUS, -cue.position.y]}
+      maxAngle={0}
+      responsiveness={16}
+      constantSizeAt={2.4}
+    >
+      <group position={[0, -0.24, 0]}>
+        <SceneButton texture={texture} width={0.17} dragId="strike" onPress={sim.strikeCue} />
+      </group>
+    </FacingGroup>
+  );
+}
+
 export function BilliardsScene({
   sim,
   prediction,
   aimScheme,
+  strikeLabel,
 }: {
   sim: BilliardsSim;
   prediction: PredictedPath[] | null;
   aimScheme: AimSchemeId;
+  /** Text on the in-scene strike button; translated outside the canvas. */
+  strikeLabel: string;
 }) {
   const table = PRESETS[sim.variant].table;
   // One notion of "something is being dragged", shared by ball placement and
@@ -395,6 +449,7 @@ export function BilliardsScene({
       <DragScopeProvider value={dragScope}>
         <BallMeshes sim={sim} scope={dragScope} />
         <Aim sim={sim} schemeId={aimScheme} />
+        <StrikeButton sim={sim} label={strikeLabel} />
       </DragScopeProvider>
       {prediction && <PredictionLines paths={prediction} />}
       <OrbitControls
