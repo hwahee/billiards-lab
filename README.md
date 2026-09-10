@@ -43,11 +43,11 @@
 bun install               # 의존성 설치
 cp .env.example .env      # 환경 설정
 
-DB_DRIVER=memory bun run dev   # 외부 서비스 없이 바로 실행 → http://localhost:3000/billiards
+DB_DRIVER=memory bun run dev   # 외부 서비스 없이 바로 실행 → http://localhost:3000
 ```
 
-당구 페이지는 DB가 필요 없습니다. Todos 데모까지 Postgres로 쓰려면 `bun run db:setup` 후
-`bun run dev`를 실행하세요.
+루트로 들어오면 바로 당구 페이지입니다. 당구는 DB가 필요 없습니다 — Todos 데모(`/todos`)까지
+Postgres로 쓰려면 `bun run db:setup` 후 `bun run dev`를 실행하세요.
 
 | 명령            | 설명                                                                |
 | --------------- | ------------------------------------------------------------------- |
