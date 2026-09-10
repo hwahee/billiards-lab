@@ -4,7 +4,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Moon, Palette, Sun } from 'lucide-react';
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router';
+import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router';
 
 import { SUPPORTED_LOCALES, type Locale } from '@shared/i18n';
 
@@ -42,7 +42,7 @@ function Header() {
 
       <nav className="app-nav" aria-label={t('app.title')}>
         {/* NavLink sets aria-current="page" on the active route automatically. */}
-        <NavLink to="/" end data-testid={TESTID.app.navTodos}>
+        <NavLink to="/todos" data-testid={TESTID.app.navTodos}>
           {t('nav.todos')}
         </NavLink>
         <NavLink to="/billiards" data-testid={TESTID.app.navBilliards}>
@@ -94,7 +94,11 @@ function Shell() {
       <Header />
       <main id="main" className="app-main">
         <Routes>
-          <Route path="/" element={<TodosPage />} />
+          {/* Billiards is what this app is for, so the root goes straight
+              there rather than to the Todos demo. `replace`, so Back leaves
+              the site instead of bouncing off the redirect. */}
+          <Route path="/" element={<Navigate to="/billiards" replace />} />
+          <Route path="/todos" element={<TodosPage />} />
           <Route path="/billiards" element={<BilliardsPage />} />
           <Route path="/design-system" element={<DesignSystemPage />} />
           <Route path="*" element={<NotFoundPage />} />
