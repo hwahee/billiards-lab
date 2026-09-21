@@ -18,6 +18,9 @@ import prettierConfig from 'eslint-config-prettier';
  * 3. `zod` may only be imported inside `src/shared/validation`. Everything
  *    else must go through the validation facade so the underlying schema
  *    library can be swapped (e.g. to yup) without touching consumers.
+ * 4. Overlay internals are closed, and the declarative overlay components are
+ *    opt-in: importing them fails until the caller disables the rule and says
+ *    why (docs/overlay-design.md §5.1).
  */
 export default tseslint.config(
   {
@@ -50,9 +53,15 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
-  // Boundary: client may not import server runtime code (types are allowed).
+  // Boundaries for the client: no server runtime code, no overlay internals,
+  // and the declarative overlay door is opt-in.
+  //
+  // All three live in ONE rule entry on purpose: flat config replaces a rule's
+  // options wholesale, so a second block naming the same rule for overlapping
+  // files would silently drop the boundaries above it.
   {
     files: ['src/client/**/*.{ts,tsx}'],
+    ignores: ['src/client/ui/overlay/**'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
@@ -63,6 +72,16 @@ export default tseslint.config(
               allowTypeImports: true,
               message:
                 'The client must not import server runtime code. Move shared code to src/shared. (Type-only imports are allowed.)',
+            },
+            {
+              group: ['**/ui/overlay/internal/*'],
+              message:
+                'Overlay internals (the stack, the shell, the scroll lock) belong to the overlay module. Use useOverlay() — see docs/overlay-design.md.',
+            },
+            {
+              group: ['**/ui/overlay/declarative'],
+              message:
+                'Overlays default to the imperative door: useOverlay(). The declarative components exist for three cases only - a body that needs a context from THIS subtree, a body that must keep re-rendering from live state, and always-visible (inline) layout. If one of those applies, disable this rule on the import line and write which one: // eslint-disable-next-line @typescript-eslint/no-restricted-imports -- <reason>',
             },
           ],
         },

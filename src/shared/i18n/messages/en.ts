@@ -17,6 +17,8 @@ export const en = {
   'common.retry': 'Retry',
   'common.delete': 'Delete',
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
+  'common.confirm': 'Confirm',
   'common.page': 'Page {page} of {totalPages}',
   'common.previousPage': 'Previous page',
   'common.nextPage': 'Next page',
@@ -65,6 +67,7 @@ export const en = {
   'designSystem.dataDisplay': 'Data display',
   'designSystem.disclosure': 'Disclosure (accordion)',
   'designSystem.colorInput': 'Color input (palette)',
+  'designSystem.overlays': 'Overlays (modal / sheet / sidebar)',
 
   'notFound.title': 'Page not found',
   'notFound.goHome': 'Go to home',

@@ -98,6 +98,12 @@ derive(stack) => {
 백드롭 중첩은 배타적 자원을 누적처럼 다뤄서 생기고, "안쪽만 닫았는데 뒤가 스크롤되는" 버그는
 누적 자원을 배타적(boolean)으로 다뤄서 생깁니다. 방향만 다른 같은 실수입니다.
 
+이 중 **`inert`·포커스 가둠·ESC 순서는 직접 구현하지 않습니다.** `<dialog>.showModal()`이
+top layer를 LIFO 스택으로 유지하면서 셋 다 정확히 처리합니다. 스택이 소유한다는 원칙은
+그대로이고, 그 소유를 플랫폼이 대신 실현할 뿐입니다. 플랫폼이 _스택에 대해_ 틀리는 것은
+scrim 하나뿐이라(`::backdrop`은 top layer 요소마다 하나씩 생깁니다) 거기에만 코드가
+필요합니다.
+
 ---
 
 ## 3. 백드롭
@@ -186,49 +192,50 @@ transition:
 ④는 이 레포에서 특히 위험합니다 — 스킨마다 duration이 다르므로(office `0s`, kids `380ms`)
 한쪽이라도 하드코딩하면 **특정 스킨에서만 재현되는** 버그가 됩니다.
 
-### 4.3 결정: phase + 콜백 분리 + 내용물 래치
+### 4.3 결정: 닫기 트랜잭션은 CSS가 들고, `onClosed`가 자리를 준다
 
-**(1) boolean이 아니라 phase**
+**(1) 상태는 DOM이 갖는다 (구현에서 수정된 결정)**
 
-```ts
-type Phase = 'closed' | 'opening' | 'open' | 'closing';
-```
+처음에는 `'closed' | 'opening' | 'open' | 'closing'` phase를 컴포넌트 상태로 두려 했습니다.
+구현해 보니 둘 다 불필요했습니다.
 
-내용물은 `phase !== 'closed'`인 동안 렌더합니다. `open` boolean 하나로는 "닫혔지만 아직
-보이는" 상태를 표현할 수 없고, 표현할 수 없는 상태가 버그가 사는 곳입니다.
+- `opening`은 어디서도 읽히지 않습니다. 진입은 전적으로 `@starting-style`이 담당합니다.
+- `closing`도 React 상태일 필요가 없습니다. `overlay`/`display`를 `allow-discrete`로
+  전환하면 `dialog.close()` 이후에도 브라우저가 요소를 top layer에 붙들어 두므로,
+  "닫혔지만 아직 보이는" 상태는 **DOM의 `dialog.open`이 이미 표현**하고 있습니다.
+
+그래서 셸은 **자기 상태를 하나도 갖지 않습니다.** 닫기 한 번이 오버레이를 연 트리 전체로
+리렌더를 번지게 하지 않는다는 실질적 이득이 따라옵니다.
 
 **(2) 콜백을 둘로**
 
 ```ts
-onClose?:  () => void;   // 닫기 시작. UI 반응용
+onClose:   () => void;   // 닫기 요청. 실제로 닫는 건 호출자가 open을 내리는 것
 onClosed?: () => void;   // 완전히 닫힘. 상태 초기화는 반드시 여기서
 ```
 
 `onClose` 하나만 주면 **모든 호출자가 거기서 상태를 비웁니다.** 원인 ①은 사용자의 실수가
 아니라 API가 유도한 실수입니다.
 
-**(3) 내용물 래치 — 코어에 둔다**
+**(3) 내용물 래치는 만들지 않는다 (구현에서 뒤집은 결정)**
 
-호출자가 `onClose`에서 상태를 비워도 버티도록, 닫히는 동안 마지막으로 그린 내용을 붙잡습니다.
+닫히는 동안 마지막으로 그린 내용을 ref에 붙들어 두는 안전망을 계획했지만, 넣지
+않았습니다. 세 가지가 겹쳤습니다.
 
-```tsx
-const frozen = useRef<ReactNode>(null);
-if (phase === 'open' || phase === 'opening') frozen.current = children;
-const body = phase === 'closing' ? frozen.current : children;
-```
-
-이펙트가 아니라 **렌더 중에** 갱신해야 합니다. 이펙트로 미루면 `open=false` 직후 렌더가
-이미 비워진 `children`으로 한 프레임 나갑니다.
-
-래치는 레지스트리가 아니라 **코어**에 둡니다. "빈 껍데기" 버그는 선언형 문에서만 발생하므로
-(명령형은 레지스트리가 `open`과 언마운트를 모두 소유), 코어에 둬야 선언형 사용자가
-`onClosed`를 몰라도 보호받습니다. `onClosed`는 올바른 자리이고, 래치는 그걸 몰랐을 때의 안전망입니다.
+- **기본 문이 이미 면역입니다.** 명령형에서는 레지스트리가 `render`와 엔트리를 트랜지션이
+  끝날 때까지 들고 있으므로 내용물이 비워질 경로 자체가 없습니다. 래치가 보호하는 것은
+  린트로 막아 둔 선언형 문뿐이고, 그 문은 `onClosed`라는 올바른 자리를 문서화합니다.
+- **래치는 렌더 중 ref 쓰기를 요구합니다.** `eslint-plugin-react-hooks` v7의
+  `react-hooks/refs`가 이를 금지합니다. 우회하려면 이펙트로 미뤄야 하는데, 그러면 비워진
+  `children`이 한 프레임 나가서 막으려던 바로 그 깜빡임이 생깁니다.
+- 즉 **API가 이미 막아 둔 경우를 위한 방어**입니다. 규칙을 끄면서까지 넣을 값은 아니라고
+  판단했습니다. 선언형 문으로 이 버그가 실제로 관측되면 그때 다시 검토합니다.
 
 **(4) 애니메이션 소유권은 패널 하나** — 내용물은 자기 진입/퇴장 transition을 갖지 않습니다.
 시계를 하나로 유지하는 가장 값싼 방법이고 원인 ④를 구조적으로 없앱니다.
 
-**(5) `closing → closed` 판정은 실측으로** — `accordion.tsx`의 `transitionSettleMs()`를
-재사용합니다. 요소의 계산된 duration을 읽으므로 스킨 토큰이 바뀌어도, office의 `0s`여도,
+**(5) 트랜지션 종료 판정은 실측으로** — `accordion.tsx`의 `transitionSettleMs()`를
+같은 방식을 씁니다. 요소의 계산된 duration을 읽으므로 스킨 토큰이 바뀌어도, office의 `0s`여도,
 `prefers-reduced-motion`이어도 알아서 맞습니다. `setTimeout(300)`은 스킨 4종 중 3종에서 틀립니다.
 
 ### 4.4 재오픈 경합
@@ -277,6 +284,9 @@ const edit = async (todo: Todo) => {
   update.mutate(saved);
 };
 ```
+
+푸터 액션은 `renderFooter`로 받습니다. 노드가 아니라 렌더 함수인 이유는 분명합니다 —
+답을 내는 버튼이 바로 거기 있으므로 본문과 같은 `resolve`가 필요합니다.
 
 확인 다이얼로그처럼 결과가 값으로 돌아오는 흐름이 `await` 한 줄이 됩니다.
 
@@ -371,7 +381,7 @@ export interface Overlay {
 | 컴포넌트      | 고유                                                           | 기본 모달리티 |
 | ------------- | -------------------------------------------------------------- | ------------- |
 | `Modal`       | `size?: 'sm'\|'md'\|'lg'`, `tone?: 'default'\|'danger'`        | 항상 모달     |
-| `BottomSheet` | `snapPoints?: ('content'\|'full')[]`, `dragToDismiss?`         | 항상 모달     |
+| `BottomSheet` | `snapPoint?: 'content'\|'full'`                                | 항상 모달     |
 | `Sidebar`     | `side: 'start'\|'end'`, `modality?: 'auto'\|'modal'\|'inline'` | `auto`        |
 
 `modality="auto"`는 데스크톱에서 비모달(scrim·트랩 없음), 모바일에서 모달입니다.
@@ -586,17 +596,18 @@ popstate에서는 최상단만 닫습니다.
 
 ```
 src/client/ui/overlay/
-├── index.ts              # 공개 표면 — useOverlay, OverlayProvider, 타입
-├── declarative.ts        # Modal / BottomSheet / Sidebar 재export (opt-in 문)
-├── overlay-stack.ts      # 순수 리듀서: push/pop, 최상단 판정, scrim 소유자, 잠금 카운트
-├── overlay-stack.test.ts # popover-position.test.ts와 같은 결 — DOM 없이 단위 테스트
-├── registry.tsx          # OverlayProvider + 아웃렛 + useOverlay
-└── internal/             # ESLint로 잠김
-    ├── overlay-core.tsx  # phase 머신, 스택 등록, 포커스, inert, 내용물 래치
-    ├── modal.tsx         # 계약의 출처 (ModalProps)
+├── index.ts                  # 공개 표면 — OverlayProvider, useOverlay
+├── declarative.ts            # Modal / BottomSheet / Sidebar 재export (opt-in 문)
+├── overlay-stack.ts          # 순수 리듀서: open/beginClose/remove/derive
+├── overlay-stack.test.ts     # DOM 없이 중첩 규칙 검증 (10 케이스)
+├── registry.tsx              # OverlayProvider + 아웃렛 + useOverlay
+└── internal/                 # ESLint로 잠김
+    ├── overlay-shell.tsx     # 공용 <dialog> 셸 — 상태 없음, 전부 이펙트/콜백
+    ├── stack-context.tsx     # 스택 상태 + 스크롤 잠금 + depth 경고
+    ├── modal.tsx             # 계약의 출처 (ModalProps)
     ├── bottom-sheet.tsx
-    ├── sidebar.tsx
-    └── scroll-lock.ts
+    ├── sidebar.tsx           # modal 셸 / inline <aside> 분기
+    └── use-media-query.ts    # modality="auto"의 브레이크포인트
 ```
 
 `popover-position.ts`가 취한 방식 그대로입니다 — **순수 로직을 분리하고 컴포넌트는 얇게.**
@@ -640,7 +651,8 @@ testid나 `role="dialog"`로 잡고, 열림/닫힘 대기는 패널의 존재로
 | ------------------------ | ----------------------------------------------------------------- |
 | `TestId` 브랜딩          | 가치는 있으나 전 컴포넌트에 걸치는 **별도 작업**. 묶으면 리뷰 2배 |
 | `backToDismiss` 히스토리 | 실제 모바일 시트 없이는 검증 불가. 스택에 자리만                  |
-| `snapPoints` 자유 배열   | `'content' \| 'full'` 2단으로 시작                                |
+| `snapPoint` 자유 배열    | `'content' \| 'full'` 2단으로 시작                                |
+| 내용물 래치              | 기본 문이 이미 면역이고, 린트 규칙과 충돌 (§4.3-3)                |
 | 컨텍스트 브리지          | 명시적으로 안 함 (props 규칙으로 대체)                            |
 | 모션 커스터마이징 API    | 스킨 토큰으로 충분                                                |
 

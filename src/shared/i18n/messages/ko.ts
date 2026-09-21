@@ -13,6 +13,8 @@ export const ko: Record<MessageKey, string> = {
   'common.retry': '다시 시도',
   'common.delete': '삭제',
   'common.cancel': '취소',
+  'common.close': '닫기',
+  'common.confirm': '확인',
   'common.page': '{totalPages}페이지 중 {page}페이지',
   'common.previousPage': '이전 페이지',
   'common.nextPage': '다음 페이지',
@@ -61,6 +63,7 @@ export const ko: Record<MessageKey, string> = {
   'designSystem.dataDisplay': '데이터 표시',
   'designSystem.disclosure': '디스클로저 (아코디언)',
   'designSystem.colorInput': '색상 입력 (팔레트)',
+  'designSystem.overlays': '오버레이 (모달 / 시트 / 사이드바)',
 
   'notFound.title': '페이지를 찾을 수 없습니다',
   'notFound.goHome': '홈으로 이동',
