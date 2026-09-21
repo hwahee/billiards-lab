@@ -101,7 +101,7 @@ function InlineSidebar({
           </button>
         </div>
 
-        <div className="overlay__body">{children}</div>
+        <div className="overlay__body scroll-box">{children}</div>
 
         {footer && <div className="overlay__footer">{footer}</div>}
       </div>

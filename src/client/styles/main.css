@@ -69,6 +69,47 @@ a {
   border: 0;
 }
 
+/*
+ * Scroll box — the one way to make a scrolling region in this design system.
+ *
+ * A scroll container clips at its padding edge, so anything a child paints
+ * outside its layout box is sliced: the focus ring (the global rule offsets it
+ * 2px), a skin's hover shadow, a lifted control. Growth past the block-end
+ * edge is worse — it counts as scrollable overflow, so a scrollbar appears on
+ * hover even when the content fits. Growth past the block-START edge is not
+ * scrollable at all, so it is simply cut off, which is why the two symptoms
+ * show up together.
+ *
+ * Two rules fix that, and they cover different halves:
+ *
+ *   1. Growth proportional to the child's SIZE (scale, rotate) can never be
+ *      bounded by a fixed reservation — a wider child always overflows more.
+ *      So the box neutralises those interaction knobs for its subtree. Custom
+ *      properties inherit, which is what makes this need no per-skin and no
+ *      per-component selector: anything consuming the tokens is disarmed,
+ *      including components written later. The constant knobs (lift, shadow,
+ *      the press squish, which shrinks and so can never overflow) are kept —
+ *      a skin keeps its character, it just stops growing in here.
+ *   2. Growth by a CONSTANT is untouched by rule 1 — an outline is not a
+ *      transform. That is what the bleed is for: pad the box out and pull it
+ *      back with an equal negative margin, so there is room without any change
+ *      to where the content sits.
+ *
+ * See docs/overlay-design.md §10.1 for the measurements behind both.
+ */
+.scroll-box {
+  overflow: auto;
+  /* Stop the page behind from taking over once the region hits its end. */
+  overscroll-behavior: contain;
+
+  --hover-scale: 1;
+  --hover-rotate: 0deg;
+  --focus-scale: 1;
+
+  padding: var(--scroll-bleed);
+  margin: calc(var(--scroll-bleed) * -1);
+}
+
 .skip-link {
   position: absolute;
   left: var(--space-3);
@@ -755,7 +796,10 @@ html {
 .overlay__panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  /* The body is a `.scroll-box`, whose bleed is a negative margin — it would
+     otherwise swallow the gap. Adding it back keeps the visible spacing at
+     --space-3 whatever the bleed is set to. */
+  gap: calc(var(--space-3) + var(--scroll-bleed));
   max-height: 100%;
   padding: var(--space-4);
   color: var(--color-text);
@@ -840,12 +884,11 @@ html {
   border-color: var(--color-border);
 }
 
+/* Scrolling, the interaction-room rules and the bleed all come from
+   `.scroll-box`; this only says how the region sits in the panel. */
 .overlay__body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  /* Stop the page behind from taking over once the panel hits its end. */
-  overscroll-behavior: contain;
 }
 
 .overlay__footer {

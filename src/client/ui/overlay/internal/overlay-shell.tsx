@@ -271,7 +271,9 @@ export function OverlayShell({
           </button>
         </div>
 
-        <div className="overlay__body">{children}</div>
+        {/* `scroll-box` is what keeps a skin's hover effects and the focus
+            ring from being sliced at the scroll edge — see main.css. */}
+        <div className="overlay__body scroll-box">{children}</div>
 
         {footer && <div className="overlay__footer">{footer}</div>}
       </div>
