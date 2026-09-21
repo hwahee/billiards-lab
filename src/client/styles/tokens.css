@@ -43,6 +43,17 @@
   --press-scale: 1;
   --focus-scale: 1;
 
+  /* -- overlays --
+     ::backdrop does not reliably inherit custom properties from its
+     originating element across engines, so the scrim colour has to resolve at
+     :root. Only ONE element ever paints it (the top of the overlay stack). */
+  --overlay-scrim: rgb(0 0 0 / 45%);
+  --overlay-width-sm: 22rem;
+  --overlay-width-md: 34rem;
+  --overlay-width-lg: 46rem;
+  --sheet-max-height: 85dvh;
+  --sidebar-width: 20rem;
+
   --font-sans:
     'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto,
     'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
@@ -70,6 +81,7 @@
 
 /* ── Design B: visibility-first — bigger type, thick borders, high contrast ─ */
 [data-design='b'] {
+  --overlay-scrim: rgb(0 0 0 / 65%);
   --font-size-sm: 1rem;
   --font-size-body: 1.125rem;
   --font-size-lg: 1.3125rem;
@@ -89,6 +101,7 @@
 
 /* ── Design "office": 2000s–2010s MS Office — dense, beveled, businesslike ─── */
 [data-design='office'] {
+  --overlay-scrim: rgb(0 0 0 / 25%);
   /* The workhorse UI stack of the era: Segoe UI (Vista+) then Tahoma (XP). */
   --font-sans: 'Segoe UI', Tahoma, Geneva, Verdana, 'Malgun Gothic', sans-serif;
 

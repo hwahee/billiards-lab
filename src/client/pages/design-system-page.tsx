@@ -15,6 +15,9 @@ import { Alert } from '../ui/alert';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
+import { useOverlay } from '../ui/overlay';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- always-visible layout: an inline sidebar is a region of the page, not something the registry pushes on top of it
+import { Sidebar } from '../ui/overlay/declarative';
 import { Checkbox } from '../ui/checkbox';
 import { Palette, type PaletteSwatch } from '../ui/palette';
 import { Select } from '../ui/select';
@@ -53,6 +56,185 @@ function Section({
       <h3 id={`ds-${id}`}>{title}</h3>
       {children}
     </section>
+  );
+}
+
+/**
+ * Overlays are opened through `useOverlay()`, never by rendering a component —
+ * see docs/overlay-design.md §5.1. The nesting button is the part worth
+ * watching: opening a confirm on top of the modal does NOT darken the page a
+ * second time, because the scrim belongs to the stack rather than to either
+ * overlay, and ESC closes only the top one.
+ */
+function OverlayDemo() {
+  const overlay = useOverlay();
+  const [result, setResult] = useState('—');
+  const [dockOpen, setDockOpen] = useState(false);
+
+  const confirmDiscard = () =>
+    overlay.modal<boolean>({
+      title: 'Discard your changes?',
+      testId: TESTID.designSystem.overlay.confirm,
+      size: 'sm',
+      tone: 'danger',
+      render: () => (
+        <p>
+          Two overlays are open and the page behind is dimmed exactly once. Press <kbd>Esc</kbd>:
+          this one closes, the modal underneath stays.
+        </p>
+      ),
+      renderFooter: ({ resolve }) => (
+        <>
+          <Button
+            variant="ghost"
+            testId={TESTID.designSystem.overlay.confirmNo}
+            onClick={() => resolve(false)}
+          >
+            Keep editing
+          </Button>
+          <Button
+            variant="danger"
+            testId={TESTID.designSystem.overlay.confirmYes}
+            onClick={() => resolve(true)}
+          >
+            Discard
+          </Button>
+        </>
+      ),
+    });
+
+  const openModal = async () => {
+    const answer = await overlay.modal<string>({
+      title: 'Edit item',
+      testId: TESTID.designSystem.overlay.modal,
+      render: ({ close }) => (
+        <>
+          <p>
+            The call awaits this overlay: whatever a button passes to <code>resolve</code> becomes
+            the value below. Dismissing resolves <code>undefined</code> instead of throwing —
+            cancelling is an outcome, not an error.
+          </p>
+          <Button
+            variant="secondary"
+            testId={TESTID.designSystem.overlay.nest}
+            onClick={() => void confirmDiscard().then((discard) => discard && close())}
+          >
+            Open a confirm on top of this
+          </Button>
+        </>
+      ),
+      renderFooter: ({ close, resolve }) => (
+        <>
+          <Button
+            variant="ghost"
+            testId={TESTID.designSystem.overlay.save + '.cancel'}
+            onClick={close}
+          >
+            Cancel
+          </Button>
+          <Button testId={TESTID.designSystem.overlay.save} onClick={() => resolve('saved')}>
+            Save
+          </Button>
+        </>
+      ),
+    });
+    setResult(answer ?? 'dismissed');
+  };
+
+  const openSheet = async () => {
+    const answer = await overlay.sheet<string>({
+      title: 'Filters',
+      testId: TESTID.designSystem.overlay.sheet,
+      snapPoint: 'content',
+      render: ({ resolve }) => (
+        <>
+          <p>
+            Same shell, bottom-anchored. Height is measured in <code>dvh</code>, so mobile browser
+            chrome collapsing does not cut it off.
+          </p>
+          <Button
+            testId={TESTID.designSystem.overlay.sheet + '.apply'}
+            onClick={() => resolve('filters applied')}
+          >
+            Apply
+          </Button>
+        </>
+      ),
+    });
+    setResult(answer ?? 'dismissed');
+  };
+
+  const openSidebar = async () => {
+    const answer = await overlay.sidebar<string>({
+      title: 'Navigation',
+      testId: TESTID.designSystem.overlay.sidebar,
+      side: 'start',
+      render: ({ resolve }) => (
+        <>
+          <p>
+            Edge-anchored. Opened this way it is always modal; the docked desktop presentation (
+            <code>modality=&quot;inline&quot;</code>) is layout, so it uses the declarative door.
+          </p>
+          <Button
+            testId={TESTID.designSystem.overlay.sidebar + '.pick'}
+            onClick={() => resolve('navigated')}
+          >
+            Pick something
+          </Button>
+        </>
+      ),
+    });
+    setResult(answer ?? 'dismissed');
+  };
+
+  return (
+    <>
+      <div className="ds-row">
+        <Button testId={TESTID.designSystem.overlay.openModal} onClick={() => void openModal()}>
+          Open modal
+        </Button>
+        <Button
+          variant="secondary"
+          testId={TESTID.designSystem.overlay.openSheet}
+          onClick={() => void openSheet()}
+        >
+          Open bottom sheet
+        </Button>
+        <Button
+          variant="secondary"
+          testId={TESTID.designSystem.overlay.openSidebar}
+          onClick={() => void openSidebar()}
+        >
+          Open sidebar
+        </Button>
+      </div>
+      <p className="muted">
+        Resolved value: <code data-testid={TESTID.designSystem.overlay.result}>{result}</code>
+      </p>
+
+      <div className="ds-row">
+        <Button
+          variant="ghost"
+          testId={TESTID.designSystem.overlay.inlineToggle}
+          onClick={() => setDockOpen((open) => !open)}
+        >
+          {dockOpen ? 'Hide' : 'Show'} the docked sidebar
+        </Button>
+      </div>
+      <Sidebar
+        open={dockOpen}
+        onClose={() => setDockOpen(false)}
+        modality="auto"
+        title="Docked sidebar"
+        testId={TESTID.designSystem.overlay.inline}
+      >
+        <p>
+          The only overlay whose modality follows the viewport. Wide: docked layout that claims
+          nothing — no scrim, no focus trap, no scroll lock — and never joins the stack. Narrow: the
+          same call becomes a modal drawer. Resize the window and watch it swap.
+        </p>
+      </Sidebar>
+    </>
   );
 }
 
@@ -275,6 +457,10 @@ export function DesignSystemPage() {
             },
           ]}
         />
+      </Section>
+
+      <Section id="overlays" title={t('designSystem.overlays')}>
+        <OverlayDemo />
       </Section>
     </section>
   );

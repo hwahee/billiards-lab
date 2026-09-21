@@ -67,6 +67,15 @@
 파생합니다. 팝업은 top layer(`popover`)에 뜨므로 DOM 위치가 아니라 testid나
 `role="dialog"`로 잡으세요. 선택 대기는 스와치의 `aria-selected`로 합니다.
 
+오버레이(`Modal` / `BottomSheet` / `Sidebar`)는 `` `${testId}.panel` ``, `` `${testId}.title` ``,
+`` `${testId}.close` ``를 파생합니다. 명령형(`useOverlay()`)으로 열든 선언형으로 열든 같은
+testid가 나오므로 테스트는 둘을 구분할 필요가 없습니다. 모달 오버레이는 `<dialog>` top
+layer에 뜨므로 DOM 위치가 아니라 testid나 `role="dialog"`로 잡고, 열림/닫힘은 패널의 존재로
+기다립니다. 중첩됐을 때 화면이 한 겹만 어두워지는지는 `dialog[open]` 중
+`data-overlay-top="true"`가 정확히 하나인지로 확인할 수 있습니다. 인라인 사이드바
+(`modality="inline"`, 넓은 뷰포트의 `auto`)는 오버레이가 아니라 레이아웃이라 `<aside>`로
+렌더되고 top layer에 뜨지 않습니다.
+
 ```ts
 test('picks a preset color', async ({ page }) => {
   await page.goto('/design-system');

@@ -1,5 +1,5 @@
 /**
- * App shell: providers (query cache, theme, locale), router, and the layout
+ * App shell: providers (query cache, theme, locale, overlays), router, and the layout
  * with the global controls (theme / design-variant / language switching).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import { TodosPage } from './pages/todos-page';
 import { TESTID } from './testing/testids';
 import { nextDesign, ThemeProvider, useTheme, type Design } from './theme/theme-context';
 import { Button } from './ui/button';
+import { OverlayProvider } from './ui/overlay';
 import { Select } from './ui/select';
 
 const queryClient = new QueryClient({
@@ -115,7 +116,12 @@ export function App() {
       <ThemeProvider>
         <LocaleProvider>
           <BrowserRouter>
-            <Shell />
+            {/* Inside every provider and the router: overlays opened through
+                useOverlay() render here, so they see exactly these contexts
+                and nothing from the subtree that opened them. */}
+            <OverlayProvider>
+              <Shell />
+            </OverlayProvider>
           </BrowserRouter>
         </LocaleProvider>
       </ThemeProvider>

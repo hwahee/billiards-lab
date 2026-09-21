@@ -686,6 +686,269 @@ a {
   opacity: 0.75;
 }
 
+/* ── Overlays (Modal / BottomSheet / Sidebar) ─────────────────────────────── */
+/*
+ * The dialog element is a transparent, full-viewport box. `showModal()` puts
+ * it in the top layer — no z-index, no clipping by `overflow`/`transform`
+ * ancestors — and makes everything behind it inert, and covering the viewport
+ * is what lets a backdrop click land on the element itself (see the
+ * pointerdown guard in ui/overlay/internal/overlay-shell.tsx).
+ *
+ * `overlay` and `display` MUST transition with `allow-discrete`: without them
+ * `dialog.close()` evicts the element from the top layer on the spot and the
+ * panel vanishes instead of animating out — the "empty shell slides away" bug
+ * in reverse. Only the panel carries visible motion, so there is one clock.
+ *
+ * Exactly one scrim. The stack marks the top-most overlay with
+ * `data-overlay-top` and only that element paints `::backdrop`; every other
+ * open overlay paints a transparent one, so depth never darkens the page.
+ *
+ * Nothing here is skin-specific on purpose — every value comes from a token,
+ * which is what lets all four skins and both themes work untouched.
+ */
+
+/* Reserve the scrollbar so locking the body (ui/overlay) shifts nothing. */
+html {
+  scrollbar-gutter: stable;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: none;
+}
+
+/* `display` belongs to the open state only — setting it on the base rule
+   would beat the UA's `dialog:not([open]) { display: none }`. */
+.overlay[open] {
+  display: flex;
+}
+
+.overlay[data-variant='modal'] {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.overlay[data-variant='sheet'] {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.overlay[data-variant='sidebar'] {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.overlay[data-variant='sidebar'][data-side='end'] {
+  justify-content: flex-end;
+}
+
+.overlay__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 100%;
+  padding: var(--space-4);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--surface-shadow);
+}
+
+.overlay__panel:focus {
+  outline: none; /* focused only to place the reading position, never as a control */
+}
+
+.overlay[data-variant='modal'] .overlay__panel {
+  width: 100%;
+  max-width: var(--overlay-width-md);
+}
+
+.overlay[data-size='sm'] .overlay__panel {
+  max-width: var(--overlay-width-sm);
+}
+
+.overlay[data-size='lg'] .overlay__panel {
+  max-width: var(--overlay-width-lg);
+}
+
+.overlay[data-tone='danger'] .overlay__panel {
+  border-color: var(--color-danger);
+}
+
+.overlay[data-variant='sheet'] .overlay__panel {
+  width: 100%;
+  max-width: var(--overlay-width-lg);
+  /* dvh, not vh: mobile browser chrome collapses as the page scrolls and vh
+     stays frozen at the tallest state, cutting the sheet off. */
+  max-height: var(--sheet-max-height);
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+}
+
+.overlay[data-snap='full'] .overlay__panel {
+  height: var(--sheet-max-height);
+}
+
+.overlay[data-variant='sidebar'] .overlay__panel {
+  width: var(--sidebar-width);
+  max-width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.overlay__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.overlay__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-heading);
+  line-height: 1.3;
+}
+
+.overlay__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  color: var(--color-text-muted);
+  background: none;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.overlay__close:hover {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.overlay__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  /* Stop the page behind from taking over once the panel hits its end. */
+  overscroll-behavior: contain;
+}
+
+.overlay__footer {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* An inline sidebar is layout, not a popup: normal flow, no top layer, no
+   scrim, and it never joins the stack. */
+.overlay--inline {
+  position: static;
+  display: block;
+  width: var(--sidebar-width);
+  max-width: 100%;
+  height: auto;
+}
+
+.overlay--inline .overlay__panel {
+  height: 100%;
+  border-radius: var(--radius-surface);
+}
+
+.overlay::backdrop {
+  background-color: transparent;
+}
+
+.overlay[data-overlay-top]::backdrop {
+  background-color: var(--overlay-scrim);
+}
+
+/* Discrete properties need `allow-discrete` to take part in a transition;
+   `@starting-style` supplies the pre-open value. Durations come from the skin
+   tokens, so office (0s) opens instantly and kids springs — and
+   `transitionSettleMs()` reads whatever lands here, so the close transaction
+   stays in step without this file knowing any numbers. */
+@media (prefers-reduced-motion: no-preference) {
+  .overlay {
+    transition:
+      overlay var(--duration-fast) allow-discrete,
+      display var(--duration-fast) allow-discrete;
+  }
+
+  .overlay::backdrop {
+    transition:
+      background-color var(--duration-fast) var(--ease-interaction),
+      overlay var(--duration-fast) allow-discrete,
+      display var(--duration-fast) allow-discrete;
+  }
+
+  @starting-style {
+    .overlay[data-overlay-top]::backdrop {
+      background-color: transparent;
+    }
+  }
+
+  .overlay__panel {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--duration-fast) var(--ease-interaction),
+      transform var(--duration-fast) var(--ease-interaction);
+  }
+
+  .overlay[data-variant='modal']:not([open]) .overlay__panel {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  .overlay[data-variant='sheet']:not([open]) .overlay__panel {
+    transform: translateY(100%);
+  }
+
+  .overlay[data-variant='sidebar']:not([open]) .overlay__panel {
+    transform: translateX(-100%);
+  }
+
+  .overlay[data-variant='sidebar'][data-side='end']:not([open]) .overlay__panel {
+    transform: translateX(100%);
+  }
+
+  @starting-style {
+    .overlay[data-variant='modal'][open] .overlay__panel {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+
+    .overlay[data-variant='sheet'][open] .overlay__panel {
+      transform: translateY(100%);
+    }
+
+    .overlay[data-variant='sidebar'][open] .overlay__panel {
+      transform: translateX(-100%);
+    }
+
+    .overlay[data-variant='sidebar'][data-side='end'][open] .overlay__panel {
+      transform: translateX(100%);
+    }
+  }
+}
+
 /* ── Todos page ───────────────────────────────────────────────────────────── */
 .todo-create {
   display: flex;
