@@ -1,5 +1,5 @@
 /**
- * App shell: providers (query cache, theme, locale), router, and the layout
+ * App shell: providers (query cache, theme, locale, overlays), router, and the layout
  * with the global controls (theme / design-variant / language switching).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,8 +14,9 @@ import { DesignSystemPage } from './pages/design-system-page';
 import { NotFoundPage } from './pages/not-found-page';
 import { TodosPage } from './pages/todos-page';
 import { TESTID } from './testing/testids';
-import { ThemeProvider, useTheme } from './theme/theme-context';
+import { nextDesign, ThemeProvider, useTheme, type Design } from './theme/theme-context';
 import { Button } from './ui/button';
+import { OverlayProvider } from './ui/overlay';
 import { Select } from './ui/select';
 
 const queryClient = new QueryClient({
@@ -28,6 +29,16 @@ const queryClient = new QueryClient({
 });
 
 const LOCALE_LABELS: Record<Locale, string> = { en: 'English', ko: '한국어' };
+
+/** Short label shown on the design toggle button. */
+const DESIGN_BADGES: Record<Design, string> = { a: 'A', b: 'B', office: 'Office', kids: 'Kids' };
+/** i18n key describing each design, for the toggle's aria-label. */
+const DESIGN_LABEL_KEYS = {
+  a: 'common.design.a',
+  b: 'common.design.b',
+  office: 'common.design.office',
+  kids: 'common.design.kids',
+} as const;
 
 function Header() {
   const { t, locale, setLocale } = useI18n();
@@ -65,11 +76,11 @@ function Header() {
         <Button
           variant="ghost"
           onClick={toggleDesign}
-          aria-label={design === 'a' ? t('common.design.b') : t('common.design.a')}
+          aria-label={t(DESIGN_LABEL_KEYS[nextDesign(design)])}
           testId={TESTID.app.designToggle}
         >
           <Palette aria-hidden size="1em" />
-          {design.toUpperCase()}
+          {DESIGN_BADGES[design]}
         </Button>
         <Select<Locale>
           label={t('common.language')}
@@ -114,7 +125,12 @@ export function App() {
       <ThemeProvider>
         <LocaleProvider>
           <BrowserRouter>
-            <Shell />
+            {/* Inside every provider and the router: overlays opened through
+                useOverlay() render here, so they see exactly these contexts
+                and nothing from the subtree that opened them. */}
+            <OverlayProvider>
+              <Shell />
+            </OverlayProvider>
           </BrowserRouter>
         </LocaleProvider>
       </ThemeProvider>

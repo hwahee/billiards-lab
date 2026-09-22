@@ -15,7 +15,9 @@
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         root.dataset.theme = theme;
-        root.dataset.design = localStorage.getItem('app.design') === 'b' ? 'b' : 'a';
+        var design = localStorage.getItem('app.design');
+        root.dataset.design =
+          design === 'b' || design === 'office' || design === 'kids' ? design : 'a';
         var locale = localStorage.getItem('app.locale');
         if (locale === 'en' || locale === 'ko') root.lang = locale;
       } catch (_) {

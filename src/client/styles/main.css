@@ -69,6 +69,47 @@ a {
   border: 0;
 }
 
+/*
+ * Scroll box — the one way to make a scrolling region in this design system.
+ *
+ * A scroll container clips at its padding edge, so anything a child paints
+ * outside its layout box is sliced: the focus ring (the global rule offsets it
+ * 2px), a skin's hover shadow, a lifted control. Growth past the block-end
+ * edge is worse — it counts as scrollable overflow, so a scrollbar appears on
+ * hover even when the content fits. Growth past the block-START edge is not
+ * scrollable at all, so it is simply cut off, which is why the two symptoms
+ * show up together.
+ *
+ * Two rules fix that, and they cover different halves:
+ *
+ *   1. Growth proportional to the child's SIZE (scale, rotate) can never be
+ *      bounded by a fixed reservation — a wider child always overflows more.
+ *      So the box neutralises those interaction knobs for its subtree. Custom
+ *      properties inherit, which is what makes this need no per-skin and no
+ *      per-component selector: anything consuming the tokens is disarmed,
+ *      including components written later. The constant knobs (lift, shadow,
+ *      the press squish, which shrinks and so can never overflow) are kept —
+ *      a skin keeps its character, it just stops growing in here.
+ *   2. Growth by a CONSTANT is untouched by rule 1 — an outline is not a
+ *      transform. That is what the bleed is for: pad the box out and pull it
+ *      back with an equal negative margin, so there is room without any change
+ *      to where the content sits.
+ *
+ * See docs/overlay-design.md §10.1 for the measurements behind both.
+ */
+.scroll-box {
+  overflow: auto;
+  /* Stop the page behind from taking over once the region hits its end. */
+  overscroll-behavior: contain;
+
+  --hover-scale: 1;
+  --hover-rotate: 0deg;
+  --focus-scale: 1;
+
+  padding: var(--scroll-bleed);
+  margin: calc(var(--scroll-bleed) * -1);
+}
+
 .skip-link {
   position: absolute;
   left: var(--space-3);
@@ -349,6 +390,608 @@ a {
   margin-top: 0;
 }
 
+/* ── Accordion ────────────────────────────────────────────────────────────── */
+/*
+ * Expand/collapse animates via the grid-template-rows 0fr→1fr technique: the
+ * panel transitions to its intrinsic height with no JS measurement. The
+ * animation itself is a CLS escape hatch — the layout shift becomes trackable
+ * motion instead of an instant jump — and it runs on --duration-expand, so
+ * skins keep authority (office zeroes it; reduced-motion disables it below).
+ * The remaining escape hatches (anchoring the clicked trigger, revealing the
+ * opened panel) live in ui/accordion.tsx.
+ */
+.accordion {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--surface-shadow);
+  overflow: hidden;
+  /* The component compensates scroll itself (measured per frame, so it stays
+     convergent either way); opt this subtree out of native scroll anchoring
+     to avoid redundant corrections. */
+  overflow-anchor: none;
+}
+
+.accordion__item + .accordion__item {
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.accordion__header {
+  margin: 0;
+  font-size: var(--font-size-body);
+}
+
+.accordion__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background-color var(--duration-fast);
+}
+
+.accordion__trigger:hover {
+  background: var(--color-surface-raised);
+}
+
+/* The accordion clips overflow, so draw the focus ring inward instead of
+   letting the global outline-offset push it outside the clip box. */
+.accordion__trigger:focus-visible {
+  outline-offset: calc(var(--focus-ring-width) * -1);
+}
+
+/* State is shown by rotating the chevron — transform only, so the trigger's
+   box never changes size and the header row itself can't cause a shift. */
+.accordion__chevron {
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-interaction);
+}
+
+.accordion__item[data-open] .accordion__chevron {
+  transform: rotate(180deg);
+}
+
+.accordion__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-expand) var(--ease-interaction);
+}
+
+.accordion__item[data-open] .accordion__panel {
+  grid-template-rows: 1fr;
+}
+
+/* Collapsed content must leave the accessibility tree and tab order, but only
+   after the closing animation finishes — hence the delayed visibility flip. */
+.accordion__panel-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s var(--duration-expand);
+}
+
+.accordion__item[data-open] .accordion__panel-inner {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.accordion__content {
+  padding: var(--space-1) var(--space-4) var(--space-4);
+}
+
+/* Reduced motion: toggle instantly. The component detects the zeroed
+   transition and falls back to single-step scroll compensation. */
+@media (prefers-reduced-motion: reduce) {
+  .accordion__panel,
+  .accordion__panel-inner,
+  .accordion__chevron {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+}
+
+/* ── Palette (color input) ────────────────────────────────────────────────── */
+/*
+ * The popup is a `popover="auto"` element, so it lives in the top layer: no
+ * z-index, no clipping by `overflow: hidden` ancestors, and no layout shift
+ * (which is why this component needs none of the accordion's escape hatches).
+ * Its top/left/max-height come from JS (ui/popover-position.ts) — the rules
+ * here only reset the UA's centered default so those coordinates apply.
+ */
+
+/* Alpha is first class, so every chip is drawn over a checkerboard. */
+.palette {
+  --palette-checker-size: 8px;
+  --palette-checker: repeating-conic-gradient(var(--color-text-muted) 0% 25%, transparent 0% 50%);
+}
+
+.palette__chip,
+.palette__swatch {
+  background-color: var(--color-surface);
+  background-image:
+    linear-gradient(var(--palette-chip-color), var(--palette-chip-color)), var(--palette-checker);
+  background-size:
+    auto,
+    var(--palette-checker-size) var(--palette-checker-size);
+  border: var(--border-width) solid var(--color-border);
+  /* Windows high-contrast replaces backgrounds wholesale, which would make
+     every swatch identical. Selection is signalled by the check icon too. */
+  forced-color-adjust: none;
+}
+
+.palette__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-height);
+  padding-inline: var(--control-padding-x);
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: background-color var(--duration-fast);
+}
+
+.palette__trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.palette__trigger:not(:disabled):hover {
+  background: var(--color-surface-raised);
+}
+
+.palette__chip {
+  width: 1.25em;
+  height: 1.25em;
+  border-radius: calc(var(--radius-control) / 2);
+  flex: none;
+}
+
+.palette__trigger-text {
+  flex: 1;
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette__chevron {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.palette__popup {
+  position: fixed;
+  inset: auto; /* JS sets top/left; without this the UA centers the popup */
+  margin: 0;
+  padding: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: auto;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--surface-shadow);
+}
+
+/* `display` belongs to the open state only. Setting it on the base rule would
+   beat the UA's `[popover] { display: none }` and leave a closed popup sitting
+   in the layout at opacity 0 — invisible, but still catching pointer events. */
+.palette__popup:popover-open {
+  display: flex;
+}
+
+/* Discrete properties need `allow-discrete` to participate in a transition;
+   `@starting-style` supplies the pre-open value. Duration comes from the skin
+   token, so office (0s) opens instantly and kids springs. */
+@media (prefers-reduced-motion: no-preference) {
+  .palette__popup {
+    opacity: 1;
+    transition:
+      opacity var(--duration-fast) var(--ease-interaction),
+      transform var(--duration-fast) var(--ease-interaction),
+      overlay var(--duration-fast) allow-discrete,
+      display var(--duration-fast) allow-discrete;
+  }
+
+  .palette__popup:not(:popover-open) {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  @starting-style {
+    .palette__popup:popover-open {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+}
+
+.palette__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.palette__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--palette-columns), auto);
+  gap: var(--space-2);
+  justify-content: start;
+}
+
+.palette__group-label {
+  grid-column: 1 / -1;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.palette__swatch {
+  width: calc(var(--control-height) * 0.75);
+  height: calc(var(--control-height) * 0.75);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--radius-control) / 1.5);
+  cursor: pointer;
+  transition:
+    transform var(--duration-fast) var(--ease-interaction),
+    box-shadow var(--duration-fast) var(--ease-interaction);
+}
+
+.palette__swatch[aria-selected='true'] {
+  box-shadow:
+    0 0 0 2px var(--color-surface-raised),
+    0 0 0 4px var(--color-focus);
+}
+
+/* The check has to survive on a white swatch and on a black one; the component
+   picks the higher-contrast ink per swatch (see contrastRatio in palette.tsx). */
+.palette__swatch[data-ink='light'] .palette__check {
+  color: #ffffff;
+}
+
+.palette__swatch[data-ink='dark'] .palette__check {
+  color: #000000;
+}
+
+.palette__custom {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.palette__custom .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.palette__native {
+  flex: none;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.palette__warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-warning);
+}
+
+/* Positioned by JS in viewport coordinates. It sits outside the popup's
+   scroll box on purpose — inside, `overflow: auto` would clip it at the
+   edges of the swatch grid, which is exactly where tooltips are needed. */
+.palette__tooltip {
+  position: fixed;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--color-surface);
+  background: var(--color-text);
+  border-radius: var(--radius-sm);
+}
+
+.palette__tooltip-value {
+  background: none;
+  padding: 0;
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* ── Overlays (Modal / BottomSheet / Sidebar) ─────────────────────────────── */
+/*
+ * The dialog element is a transparent, full-viewport box. `showModal()` puts
+ * it in the top layer — no z-index, no clipping by `overflow`/`transform`
+ * ancestors — and makes everything behind it inert, and covering the viewport
+ * is what lets a backdrop click land on the element itself (see the
+ * pointerdown guard in ui/overlay/internal/overlay-shell.tsx).
+ *
+ * `overlay` and `display` MUST transition with `allow-discrete`: without them
+ * `dialog.close()` evicts the element from the top layer on the spot and the
+ * panel vanishes instead of animating out — the "empty shell slides away" bug
+ * in reverse. Only the panel carries visible motion, so there is one clock.
+ *
+ * Exactly one scrim. The stack marks the top-most overlay with
+ * `data-overlay-top` and only that element paints `::backdrop`; every other
+ * open overlay paints a transparent one, so depth never darkens the page.
+ *
+ * Nothing here is skin-specific on purpose — every value comes from a token,
+ * which is what lets all four skins and both themes work untouched.
+ */
+
+/* Reserve the scrollbar so locking the body (ui/overlay) shifts nothing. */
+html {
+  scrollbar-gutter: stable;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: none;
+}
+
+/* `display` belongs to the open state only — setting it on the base rule
+   would beat the UA's `dialog:not([open]) { display: none }`. */
+.overlay[open] {
+  display: flex;
+}
+
+.overlay[data-variant='modal'] {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.overlay[data-variant='sheet'] {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.overlay[data-variant='sidebar'] {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.overlay[data-variant='sidebar'][data-side='end'] {
+  justify-content: flex-end;
+}
+
+.overlay__panel {
+  display: flex;
+  flex-direction: column;
+  /* The body is a `.scroll-box`, whose bleed is a negative margin — it would
+     otherwise swallow the gap. Adding it back keeps the visible spacing at
+     --space-3 whatever the bleed is set to. */
+  gap: calc(var(--space-3) + var(--scroll-bleed));
+  max-height: 100%;
+  padding: var(--space-4);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--surface-shadow);
+}
+
+.overlay__panel:focus {
+  outline: none; /* focused only to place the reading position, never as a control */
+}
+
+.overlay[data-variant='modal'] .overlay__panel {
+  width: 100%;
+  max-width: var(--overlay-width-md);
+}
+
+.overlay[data-size='sm'] .overlay__panel {
+  max-width: var(--overlay-width-sm);
+}
+
+.overlay[data-size='lg'] .overlay__panel {
+  max-width: var(--overlay-width-lg);
+}
+
+.overlay[data-tone='danger'] .overlay__panel {
+  border-color: var(--color-danger);
+}
+
+.overlay[data-variant='sheet'] .overlay__panel {
+  width: 100%;
+  max-width: var(--overlay-width-lg);
+  /* dvh, not vh: mobile browser chrome collapses as the page scrolls and vh
+     stays frozen at the tallest state, cutting the sheet off. */
+  max-height: var(--sheet-max-height);
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+}
+
+.overlay[data-snap='full'] .overlay__panel {
+  height: var(--sheet-max-height);
+}
+
+.overlay[data-variant='sidebar'] .overlay__panel {
+  width: var(--sidebar-width);
+  max-width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.overlay__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.overlay__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-heading);
+  line-height: 1.3;
+}
+
+.overlay__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  color: var(--color-text-muted);
+  background: none;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.overlay__close:hover {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+/* Scrolling, the interaction-room rules and the bleed all come from
+   `.scroll-box`; this only says how the region sits in the panel. */
+.overlay__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.overlay__footer {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* An inline sidebar is layout, not a popup: normal flow, no top layer, no
+   scrim, and it never joins the stack. */
+.overlay--inline {
+  position: static;
+  display: block;
+  width: var(--sidebar-width);
+  max-width: 100%;
+  height: auto;
+}
+
+.overlay--inline .overlay__panel {
+  height: 100%;
+  border-radius: var(--radius-surface);
+}
+
+.overlay::backdrop {
+  background-color: transparent;
+}
+
+.overlay[data-overlay-top]::backdrop {
+  background-color: var(--overlay-scrim);
+}
+
+/* Discrete properties need `allow-discrete` to take part in a transition;
+   `@starting-style` supplies the pre-open value. Durations come from the skin
+   tokens, so office (0s) opens instantly and kids springs — and
+   `transitionSettleMs()` reads whatever lands here, so the close transaction
+   stays in step without this file knowing any numbers. */
+@media (prefers-reduced-motion: no-preference) {
+  .overlay {
+    transition:
+      overlay var(--duration-fast) allow-discrete,
+      display var(--duration-fast) allow-discrete;
+  }
+
+  .overlay::backdrop {
+    transition:
+      background-color var(--duration-fast) var(--ease-interaction),
+      overlay var(--duration-fast) allow-discrete,
+      display var(--duration-fast) allow-discrete;
+  }
+
+  @starting-style {
+    .overlay[data-overlay-top]::backdrop {
+      background-color: transparent;
+    }
+  }
+
+  .overlay__panel {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--duration-fast) var(--ease-interaction),
+      transform var(--duration-fast) var(--ease-interaction);
+  }
+
+  .overlay[data-variant='modal']:not([open]) .overlay__panel {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  .overlay[data-variant='sheet']:not([open]) .overlay__panel {
+    transform: translateY(100%);
+  }
+
+  .overlay[data-variant='sidebar']:not([open]) .overlay__panel {
+    transform: translateX(-100%);
+  }
+
+  .overlay[data-variant='sidebar'][data-side='end']:not([open]) .overlay__panel {
+    transform: translateX(100%);
+  }
+
+  @starting-style {
+    .overlay[data-variant='modal'][open] .overlay__panel {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+
+    .overlay[data-variant='sheet'][open] .overlay__panel {
+      transform: translateY(100%);
+    }
+
+    .overlay[data-variant='sidebar'][open] .overlay__panel {
+      transform: translateX(-100%);
+    }
+
+    .overlay[data-variant='sidebar'][data-side='end'][open] .overlay__panel {
+      transform: translateX(100%);
+    }
+  }
+}
+
 /* ── Todos page ───────────────────────────────────────────────────────────── */
 .todo-create {
   display: flex;
@@ -436,6 +1079,14 @@ a {
   align-items: start;
 }
 
+/* Fixed white so the palette's contrast warning has a real reference. */
+.ds-color-sample {
+  padding: var(--space-2) var(--space-3);
+  background: #ffffff;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
 .swatch-grid {
   list-style: none;
   margin: 0;
@@ -456,6 +1107,309 @@ a {
   height: var(--space-6);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
+}
+
+/* ============================================================================
+ * OFFICE SKIN — 2000s–2010s MS Office / Win32 look.
+ *
+ * Scoped to [data-design='office'] so designs A and B are untouched. The
+ * signature of the era is the 3D bevel: buttons look raised (light top/left,
+ * dark bottom/right) and press *in* on :active; inputs look sunken (the
+ * inverse bevel). Everything is dense, square-cornered and — deliberately —
+ * motionless (--duration-fast is 0s in the office token block).
+ * ==========================================================================*/
+
+/* Classic dotted Windows focus rectangle, hugging the control. */
+[data-design='office'] :focus-visible {
+  outline: 1px dotted var(--color-text);
+  outline-offset: 1px;
+}
+
+/* ── Beveled push-buttons ──────────────────────────────────────────────────*/
+[data-design='office'] .btn {
+  font-weight: 400;
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--office-bevel-light) var(--office-bevel-dark) var(--office-bevel-dark)
+    var(--office-bevel-light);
+  box-shadow: none;
+}
+
+[data-design='office'] .btn--secondary,
+[data-design='office'] .btn--ghost {
+  background: linear-gradient(var(--office-btn-top), var(--office-btn-bottom));
+  color: var(--color-text);
+}
+
+[data-design='office'] .btn--secondary:not(:disabled):hover,
+[data-design='office'] .btn--ghost:not(:disabled):hover {
+  background: linear-gradient(
+    color-mix(in srgb, var(--office-btn-top), white 12%),
+    color-mix(in srgb, var(--office-btn-bottom), white 12%)
+  );
+}
+
+[data-design='office'] .btn--primary {
+  background: linear-gradient(
+    color-mix(in srgb, var(--color-primary) 72%, white),
+    var(--color-primary)
+  );
+}
+
+[data-design='office'] .btn--primary:not(:disabled):hover {
+  background: linear-gradient(
+    color-mix(in srgb, var(--color-primary) 58%, white),
+    var(--color-primary-hover)
+  );
+}
+
+/* Press in: invert the bevel and nudge the label down-right. Use transform
+   (not padding) so the button's box is unchanged — padding would grow the
+   auto-width element and reflow its neighbors. */
+[data-design='office'] .btn:not(:disabled):active {
+  border-color: var(--office-bevel-dark) var(--office-bevel-light) var(--office-bevel-light)
+    var(--office-bevel-dark);
+  transform: translate(1px, 1px);
+}
+
+/* ── Sunken inputs / selects (both use .field__input) ──────────────────────*/
+[data-design='office'] .field__input {
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--office-bevel-dark) var(--office-bevel-light) var(--office-bevel-light)
+    var(--office-bevel-dark);
+  background: var(--color-surface);
+  border-radius: 1px;
+}
+
+/* ── Menu-bar style navigation ─────────────────────────────────────────────*/
+[data-design='office'] .app-nav a {
+  border-radius: 0;
+}
+
+[data-design='office'] .app-nav a:hover {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  outline: 1px solid var(--color-primary);
+}
+
+/* ── Panels: raised group-box bevel; badges go square ──────────────────────*/
+[data-design='office'] .card {
+  border-color: var(--office-bevel-light) var(--office-bevel-dark) var(--office-bevel-dark)
+    var(--office-bevel-light);
+}
+
+[data-design='office'] .badge {
+  border-radius: 2px;
+}
+
+/* ── Accordion: task-pane header bars; toggling is instant (0s tokens) ─────*/
+[data-design='office'] .accordion__trigger {
+  background: linear-gradient(var(--office-btn-top), var(--office-btn-bottom));
+}
+
+[data-design='office'] .accordion__trigger:hover {
+  background: linear-gradient(
+    color-mix(in srgb, var(--office-btn-top), white 12%),
+    color-mix(in srgb, var(--office-btn-bottom), white 12%)
+  );
+}
+
+[data-design='office'] .accordion__item + .accordion__item {
+  border-top-color: var(--office-bevel-dark);
+}
+
+/* ── Palette: sunken combo control + flat dropdown; the tooltip is the
+      unmistakable pale-yellow one of the era. Motion is 0s from the tokens. ─*/
+[data-design='office'] .palette__trigger,
+[data-design='office'] .palette__native {
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--office-bevel-dark) var(--office-bevel-light) var(--office-bevel-light)
+    var(--office-bevel-dark);
+  border-radius: 1px;
+}
+
+[data-design='office'] .palette__popup {
+  padding: 2px;
+  gap: 2px;
+  border-color: var(--office-bevel-light) var(--office-bevel-dark) var(--office-bevel-dark)
+    var(--office-bevel-light);
+  background: var(--color-surface-raised);
+}
+
+[data-design='office'] .palette__groups,
+[data-design='office'] .palette__custom {
+  padding: var(--space-2);
+}
+
+[data-design='office'] .palette__grid {
+  gap: 2px; /* dense, like the Office color grid */
+}
+
+[data-design='office'] .palette__swatch {
+  border-radius: 0;
+  border-color: var(--color-border);
+}
+
+[data-design='office'] .palette__swatch[aria-selected='true'] {
+  box-shadow: none;
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+[data-design='office'] .palette__tooltip {
+  color: #000000;
+  background: #ffffe1;
+  border: 1px solid #000000;
+  border-radius: 0;
+}
+
+/* ============================================================================
+ * KIDS SKIN — exaggerated, playful interactions.
+ *
+ * Everything here is scoped to [data-design='kids'], so designs A and B are
+ * untouched. Motion knobs (--hover-scale, --ease-interaction, …) come from the
+ * kids token block; the transforms below just consume them. All transform-based
+ * motion is gated behind prefers-reduced-motion so it stays accessible.
+ * ==========================================================================*/
+
+/* Chunky sticker-button: a hard bottom shadow reads as a pressable 3D stud. */
+[data-design='kids'] .btn {
+  font-weight: 800;
+  box-shadow: 0 5px 0 rgb(0 0 0 / 18%);
+}
+
+[data-design='kids'] .btn--ghost {
+  box-shadow: none;
+}
+
+[data-design='kids'] .accordion__trigger {
+  font-weight: 800;
+}
+
+/* Palette: fat round candy buttons with the same sticker shadow as .btn. */
+[data-design='kids'] .palette__trigger {
+  font-weight: 800;
+  box-shadow: 0 5px 0 rgb(0 0 0 / 18%);
+}
+
+[data-design='kids'] .palette__swatch {
+  border-radius: var(--radius-full);
+}
+
+[data-design='kids'] .palette__tooltip {
+  font-weight: 700;
+  border-radius: var(--radius-full);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Broaden the transition to include transform/box-shadow and swap in the
+     springy easing so every state change overshoots and settles. */
+  [data-design='kids'] .btn,
+  [data-design='kids'] .field__input,
+  [data-design='kids'] .app-nav a,
+  [data-design='kids'] .todo-item,
+  [data-design='kids'] .card,
+  [data-design='kids'] .badge,
+  [data-design='kids'] .palette__trigger,
+  [data-design='kids'] .palette__swatch,
+  [data-design='kids'] .checkbox__input {
+    transition:
+      transform var(--duration-fast) var(--ease-interaction),
+      box-shadow var(--duration-fast) var(--ease-interaction),
+      background-color var(--duration-fast) var(--ease-interaction),
+      border-color var(--duration-fast) var(--ease-interaction),
+      color var(--duration-fast) var(--ease-interaction);
+  }
+
+  /* Buttons: bounce up + tilt on hover, deep squish on press. */
+  [data-design='kids'] .btn:not(:disabled):hover {
+    transform: translateY(var(--hover-lift)) scale(var(--hover-scale)) rotate(var(--hover-rotate));
+    box-shadow: 0 9px 0 rgb(0 0 0 / 18%);
+  }
+
+  [data-design='kids'] .btn:not(:disabled):active {
+    transform: translateY(2px) scale(var(--press-scale));
+    box-shadow: 0 1px 0 rgb(0 0 0 / 18%);
+  }
+
+  /* Swatches pop out of the grid when hovered or arrowed onto. */
+  [data-design='kids'] .palette__swatch:hover,
+  [data-design='kids'] .palette__swatch:focus-visible {
+    transform: scale(1.25) rotate(var(--hover-rotate));
+  }
+
+  [data-design='kids'] .palette__trigger:not(:disabled):hover {
+    transform: translateY(var(--hover-lift)) scale(var(--hover-scale)) rotate(var(--hover-rotate));
+    box-shadow: 0 9px 0 rgb(0 0 0 / 18%);
+  }
+
+  /* Nav links do a happy wiggle. */
+  [data-design='kids'] .app-nav a:hover {
+    transform: scale(1.12) rotate(-4deg);
+    color: var(--color-primary);
+  }
+
+  /* Text inputs pop and get a fat colourful glow when focused. */
+  [data-design='kids'] .field__input:focus,
+  [data-design='kids'] .field__input:focus-visible {
+    transform: scale(var(--focus-scale));
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-focus) 55%, transparent);
+    animation: kids-focus-pop var(--duration-fast) var(--ease-interaction);
+  }
+
+  /* Cards / todo rows lift and tilt like a picked-up toy card. */
+  [data-design='kids'] .card:hover,
+  [data-design='kids'] .todo-item:hover {
+    transform: translateY(-6px) rotate(-1deg) scale(1.02);
+  }
+
+  /* Checking a box gives a satisfying celebratory pop. */
+  [data-design='kids'] .checkbox__input:checked {
+    animation: kids-check-pop 0.4s var(--ease-interaction);
+  }
+
+  /* Spin the loading spinner with an eager, bouncy cadence. */
+  [data-design='kids'] .spinner {
+    animation: spinner-rotate 0.55s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+  }
+
+  /* Accordion: panels spring open (overshoot easing + longer --duration-expand
+     from the kids tokens); the chevron does an eager bounce on hover. */
+  [data-design='kids'] .accordion__trigger:hover .accordion__chevron {
+    transform: translateY(3px) scale(1.2);
+  }
+
+  [data-design='kids'] .accordion__item[data-open] .accordion__trigger:hover .accordion__chevron {
+    transform: rotate(180deg) scale(1.2);
+  }
+}
+
+@keyframes kids-focus-pop {
+  0% {
+    transform: scale(1);
+  }
+  55% {
+    transform: scale(calc(var(--focus-scale) + 0.06));
+  }
+  100% {
+    transform: scale(var(--focus-scale));
+  }
+}
+
+@keyframes kids-check-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.5) rotate(-12deg);
+  }
+  70% {
+    transform: scale(0.85) rotate(6deg);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* ── Screen-space HUD over the 3D view ────────────────────────────────────── */

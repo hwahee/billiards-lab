@@ -18,6 +18,8 @@ export const en = {
   'common.retry': 'Retry',
   'common.delete': 'Delete',
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
+  'common.confirm': 'Confirm',
   'common.page': 'Page {page} of {totalPages}',
   'common.previousPage': 'Previous page',
   'common.nextPage': 'Next page',
@@ -25,6 +27,8 @@ export const en = {
   'common.theme.dark': 'Switch to dark theme',
   'common.design.a': 'Design A (aesthetic)',
   'common.design.b': 'Design B (high visibility)',
+  'common.design.office': 'Office skin (classic desktop)',
+  'common.design.kids': 'Kids skin (playground)',
   'common.language': 'Language',
 
   'todos.title': 'Todos',
@@ -47,15 +51,24 @@ export const en = {
   'todos.loadFailed': 'Could not load todos.',
   'todos.total': '{count} items in total',
 
+  'palette.recent': 'Recently used',
+  'palette.hexLabel': 'Hex value',
+  'palette.hexInvalid': 'Use a color like #5b5bd6 or #5b5bd680.',
+  'palette.customColor': 'More colors (system picker)',
+  'palette.contrastWarning': 'Contrast {ratio}:1 — below the {minimum}:1 minimum.',
+
   'designSystem.title': 'Design System',
   'designSystem.description':
-    'Every token and component in one place. Use the header controls to toggle theme (light/dark), design variant (A/B) and language.',
+    'Every token and component in one place. Use the header controls to toggle theme (light/dark), design variant (A / B / Office / Kids) and language.',
   'designSystem.colors': 'Color tokens',
   'designSystem.typography': 'Typography',
   'designSystem.buttons': 'Buttons',
   'designSystem.formFields': 'Form fields',
   'designSystem.feedback': 'Feedback',
   'designSystem.dataDisplay': 'Data display',
+  'designSystem.disclosure': 'Disclosure (accordion)',
+  'designSystem.colorInput': 'Color input (palette)',
+  'designSystem.overlays': 'Overlays (modal / sheet / sidebar)',
 
   'billiards.title': 'Billiards Lab',
   'billiards.description':

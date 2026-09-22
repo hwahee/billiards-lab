@@ -22,12 +22,45 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
+  /* Room a `.scroll-box` reserves so a child's focus ring, hover shadow or
+     lift is not sliced off at the scroll edge. The global focus ring reaches
+     `outline-offset` + `--focus-ring-width` (6px at the widest skin), so 12px
+     leaves a margin. A layout that puts a scroll box between other elements
+     adds this back to its own gap — the bleed is cancelled by a negative
+     margin, and a flex `gap` would otherwise be eaten by it. */
+  --scroll-bleed: var(--space-3);
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --radius-xl: 28px;
   --radius-full: 999px;
 
   --duration-fast: 150ms;
+  /* Panel expand/collapse (accordion & co). Deliberately slower than
+     --duration-fast: animated reveal is a CLS escape hatch — the shift must be
+     slow enough for the eye to track where content moved. */
+  --duration-expand: 240ms;
+
+  /* Motion knobs consumed by interaction rules. Neutral by default (designs A/B
+     stay calm); the kids skin overrides these to exaggerate every interaction. */
+  --ease-interaction: ease;
+  --hover-scale: 1;
+  --hover-lift: 0px;
+  --hover-rotate: 0deg;
+  --press-scale: 1;
+  --focus-scale: 1;
+
+  /* -- overlays --
+     ::backdrop does not reliably inherit custom properties from its
+     originating element across engines, so the scrim colour has to resolve at
+     :root. Only ONE element ever paints it (the top of the overlay stack). */
+  --overlay-scrim: rgb(0 0 0 / 45%);
+  --overlay-width-sm: 22rem;
+  --overlay-width-md: 34rem;
+  --overlay-width-lg: 46rem;
+  --sheet-max-height: 85dvh;
+  --sidebar-width: 20rem;
 
   --font-sans:
     'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto,
@@ -56,6 +89,7 @@
 
 /* ── Design B: visibility-first — bigger type, thick borders, high contrast ─ */
 [data-design='b'] {
+  --overlay-scrim: rgb(0 0 0 / 65%);
   --font-size-sm: 1rem;
   --font-size-body: 1.125rem;
   --font-size-lg: 1.3125rem;
@@ -71,6 +105,68 @@
   --border-width: 2px;
   --focus-ring-width: 4px;
   --surface-shadow: none;
+}
+
+/* ── Design "office": 2000s–2010s MS Office — dense, beveled, businesslike ─── */
+[data-design='office'] {
+  --overlay-scrim: rgb(0 0 0 / 25%);
+  /* The workhorse UI stack of the era: Segoe UI (Vista+) then Tahoma (XP). */
+  --font-sans: 'Segoe UI', Tahoma, Geneva, Verdana, 'Malgun Gothic', sans-serif;
+
+  --font-size-sm: 0.6875rem; /* 11px — toolbar/label text */
+  --font-size-body: 0.8125rem; /* 13px */
+  --font-size-lg: 1rem; /* 16px */
+  --font-size-xl: 1.125rem; /* 18px */
+  --font-size-2xl: 1.375rem; /* 22px */
+  --font-weight-heading: 700;
+  --line-height-body: 1.4; /* tight, information-dense */
+
+  --control-height: 1.75rem; /* compact toolbar controls */
+  --control-padding-x: var(--space-2);
+  --radius-control: 2px; /* nearly square */
+  --radius-surface: 2px;
+  --border-width: 1px;
+  --focus-ring-width: 1px;
+  --surface-shadow: none;
+
+  /* Restrained: state changes are instant — no easing, no motion. */
+  --duration-fast: 0s;
+  --duration-expand: 0s;
+}
+
+/* ── Design "kids": playground/toy vibe — chunky, rounded, bouncy ──────────── */
+[data-design='kids'] {
+  /* Rounded, friendly display font; falls back through fun system faces. */
+  --font-sans:
+    'Baloo 2', 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', 'Fredoka', 'Apple SD Gothic Neo',
+    'Malgun Gothic', system-ui, sans-serif;
+
+  --font-size-sm: 0.9375rem;
+  --font-size-body: 1.0625rem;
+  --font-size-lg: 1.375rem;
+  --font-size-xl: 1.875rem;
+  --font-size-2xl: 2.5rem;
+  --font-weight-heading: 800;
+  --line-height-body: 1.6;
+
+  --control-height: 3rem;
+  --control-padding-x: var(--space-4);
+  --radius-control: var(--radius-full); /* pill-shaped, toy-like */
+  --radius-surface: var(--radius-xl); /* big rounded corners */
+  --border-width: 3px; /* thick cartoon outline */
+  --focus-ring-width: 4px;
+  /* Hard offset drop-shadow → sticker / Roblox-stud look. */
+  --surface-shadow: 0 6px 0 rgb(0 0 0 / 12%), 0 14px 26px rgb(0 0 0 / 10%);
+
+  /* Exaggerated motion: overshoot spring + big scale/lift/tilt. */
+  --duration-fast: 220ms;
+  --duration-expand: 380ms;
+  --ease-interaction: cubic-bezier(0.34, 1.8, 0.5, 1); /* springy overshoot */
+  --hover-scale: 1.08;
+  --hover-lift: -4px;
+  --hover-rotate: -2.5deg;
+  --press-scale: 0.9;
+  --focus-scale: 1.04;
 }
 
 /* ── Semantic colors: design A ────────────────────────────────────────────── */
@@ -145,4 +241,90 @@
   --color-danger: #ff8080;
   --color-danger-contrast: #000000;
   --color-focus: #82b1ff;
+}
+
+/* ── Semantic colors: design "office", light — silver/Luna chrome ─────────── */
+[data-design='office'][data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #d4d0c8; /* classic window-chrome gray */
+  --color-surface: #ffffff; /* document / input area */
+  --color-surface-raised: #ece9d8; /* toolbar band */
+  --color-text: #000000;
+  --color-text-muted: #4d4d4d;
+  --color-border: #808080; /* flat 1px control border */
+  --color-primary: #21569e; /* Office/Luna blue */
+  --color-primary-hover: #1b4580;
+  --color-primary-contrast: #ffffff;
+  --color-success: #2d7d2d;
+  --color-warning: #9c6500;
+  --color-danger: #a80000;
+  --color-danger-contrast: #ffffff;
+  --color-focus: #21569e;
+
+  /* Beveled-control edges + button faces (consumed by main.css office rules). */
+  --office-bevel-light: #ffffff; /* raised: top/left highlight */
+  --office-bevel-dark: #808080; /* raised: bottom/right shadow */
+  --office-btn-top: #fbfbfa;
+  --office-btn-bottom: #d7d3ca;
+}
+
+/* ── Semantic colors: design "office", dark — graphite ribbon ─────────────── */
+[data-design='office'][data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #333333;
+  --color-surface: #2b2b2b;
+  --color-surface-raised: #3f3f3f;
+  --color-text: #f0f0f0;
+  --color-text-muted: #b0b0b0;
+  --color-border: #5a5a5a;
+  --color-primary: #4a8ad4;
+  --color-primary-hover: #6aa0e0;
+  --color-primary-contrast: #ffffff;
+  --color-success: #4ea64e;
+  --color-warning: #cf9b34;
+  --color-danger: #d16a6a;
+  --color-danger-contrast: #ffffff;
+  --color-focus: #7aa8e0;
+
+  --office-bevel-light: #5f5f5f;
+  --office-bevel-dark: #141414;
+  --office-btn-top: #4a4a4a;
+  --office-btn-bottom: #333333;
+}
+
+/* ── Semantic colors: design "kids" — bright, saturated, candy palette ─────── */
+[data-design='kids'][data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #fff7ec; /* warm cream classroom */
+  --color-surface: #ffffff;
+  --color-surface-raised: #fff0d6;
+  --color-text: #35235e; /* deep grape, softer than black */
+  --color-text-muted: #7a6aa6;
+  --color-border: #2c2150; /* dark chunky cartoon outline */
+  --color-primary: #4f7cff; /* toy blue */
+  --color-primary-hover: #3a63e6;
+  --color-primary-contrast: #ffffff;
+  --color-success: #23c268;
+  --color-warning: #ff9f1c;
+  --color-danger: #ff4d6d;
+  --color-danger-contrast: #ffffff;
+  --color-focus: #ffb703; /* sunny focus ring */
+}
+
+[data-design='kids'][data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #1b1236; /* night-sky purple */
+  --color-surface: #271a49;
+  --color-surface-raised: #34235f;
+  --color-text: #f4ecff;
+  --color-text-muted: #b9a8e6;
+  --color-border: #7c5cff; /* glowing outline */
+  --color-primary: #7aa2ff;
+  --color-primary-hover: #9cbcff;
+  --color-primary-contrast: #14102b;
+  --color-success: #4ade80;
+  --color-warning: #ffc23d;
+  --color-danger: #ff6b88;
+  --color-danger-contrast: #14102b;
+  --color-focus: #ffd60a; /* sunny focus ring */
 }

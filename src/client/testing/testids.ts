@@ -62,6 +62,24 @@ export const TESTID = {
   designSystem: {
     page: 'design-system.page',
     section: (name: string) => `design-system.section.${name}`,
+    overlay: {
+      openModal: 'design-system.overlay.open-modal',
+      openSheet: 'design-system.overlay.open-sheet',
+      openSidebar: 'design-system.overlay.open-sidebar',
+      modal: 'design-system.overlay.modal',
+      sheet: 'design-system.overlay.sheet',
+      sidebar: 'design-system.overlay.sidebar',
+      /* Opened from inside the modal — the nesting the stack has to survive. */
+      nest: 'design-system.overlay.nest',
+      confirm: 'design-system.overlay.confirm',
+      confirmYes: 'design-system.overlay.confirm.yes',
+      confirmNo: 'design-system.overlay.confirm.no',
+      save: 'design-system.overlay.save',
+      result: 'design-system.overlay.result',
+      /* The declarative door — an inline sidebar is layout, not a popup. */
+      inline: 'design-system.overlay.inline',
+      inlineToggle: 'design-system.overlay.inline.toggle',
+    },
   },
   notFound: {
     page: 'not-found.page',

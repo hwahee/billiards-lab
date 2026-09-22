@@ -37,6 +37,21 @@
 
 ![회전하는 공 클로즈업](docs/images/billiards-spin.png)
 
+## 요구 사항
+
+| 런타임 | 버전        |
+| ------ | ----------- |
+| Bun    | **1.4.0**   |
+| Node   | **24.19.0** |
+
+버전은 `package.json` 한 곳에만 적혀 있습니다 — `packageManager`(`bun@1.4.0`)와
+`engines`(`bun`/`node`). CI는 이 필드를 그대로 읽고(`setup-bun`은 `packageManager`,
+`setup-node`는 `engines.node`), Docker 이미지도 같은 버전(`oven/bun:1.4.0`)을 씁니다.
+버전을 올릴 때는 `package.json`과 `Dockerfile`만 고치면 됩니다.
+
+애플리케이션은 Bun으로 실행·빌드·테스트합니다. Node는 Bun 밖에서 도는 에디터
+플러그인·툴링(ESLint/TypeScript 언어 서버 등)이 쓰는 런타임이라 함께 고정합니다.
+
 ## 시작하기
 
 ```bash
@@ -91,3 +106,7 @@ Postgres로 쓰려면 `bun run db:setup` 후 `bun run dev`를 실행하세요.
 보일러플레이트 자체의 구조와 아키텍처 결정은 **[docs/boilerplate.md](docs/boilerplate.md)**,
 UI 자동화/테스트 규약은 **[docs/ui-automation.md](docs/ui-automation.md)** 에 정리되어
 있습니다.
+
+Palette 색상 입력과 Modal/BottomSheet/Sidebar 오버레이 계열의 설계 근거는 각각
+**[docs/palette-design.md](docs/palette-design.md)**,
+**[docs/overlay-design.md](docs/overlay-design.md)** 에 있습니다.

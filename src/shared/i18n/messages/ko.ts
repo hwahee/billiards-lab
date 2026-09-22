@@ -14,6 +14,8 @@ export const ko: Record<MessageKey, string> = {
   'common.retry': '다시 시도',
   'common.delete': '삭제',
   'common.cancel': '취소',
+  'common.close': '닫기',
+  'common.confirm': '확인',
   'common.page': '{totalPages}페이지 중 {page}페이지',
   'common.previousPage': '이전 페이지',
   'common.nextPage': '다음 페이지',
@@ -21,6 +23,8 @@ export const ko: Record<MessageKey, string> = {
   'common.theme.dark': '다크 테마로 전환',
   'common.design.a': '디자인 A (심미성)',
   'common.design.b': '디자인 B (시인성)',
+  'common.design.office': '오피스 스킨 (클래식 데스크톱)',
+  'common.design.kids': '어린이 스킨 (놀이터)',
   'common.language': '언어',
 
   'todos.title': '할 일',
@@ -43,15 +47,24 @@ export const ko: Record<MessageKey, string> = {
   'todos.loadFailed': '할 일 목록을 불러오지 못했습니다.',
   'todos.total': '총 {count}개',
 
+  'palette.recent': '최근 사용',
+  'palette.hexLabel': 'HEX 값',
+  'palette.hexInvalid': '#5b5bd6 또는 #5b5bd680 형식으로 입력하세요.',
+  'palette.customColor': '더 많은 색 (시스템 피커)',
+  'palette.contrastWarning': '대비 {ratio}:1 — 최소 권장 {minimum}:1 미만입니다.',
+
   'designSystem.title': '디자인 시스템',
   'designSystem.description':
-    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 헤더의 컨트롤로 테마(라이트/다크), 디자인(A/B), 언어를 전환해 보세요.',
+    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 헤더의 컨트롤로 테마(라이트/다크), 디자인(A / B / 오피스 / 어린이), 언어를 전환해 보세요.',
   'designSystem.colors': '컬러 토큰',
   'designSystem.typography': '타이포그래피',
   'designSystem.buttons': '버튼',
   'designSystem.formFields': '폼 필드',
   'designSystem.feedback': '피드백',
   'designSystem.dataDisplay': '데이터 표시',
+  'designSystem.disclosure': '디스클로저 (아코디언)',
+  'designSystem.colorInput': '색상 입력 (팔레트)',
+  'designSystem.overlays': '오버레이 (모달 / 시트 / 사이드바)',
 
   'billiards.title': '당구 실험실',
   'billiards.description':
