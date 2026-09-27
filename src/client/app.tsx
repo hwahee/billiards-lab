@@ -112,6 +112,10 @@ function Shell() {
           <Route path="/todos" element={<TodosPage />} />
           <Route path="/billiards" element={<BilliardsPage />} />
           <Route path="/design-system" element={<DesignSystemPage />} />
+          {/* A second path onto the same page — it renders DesignSystemPage
+              itself rather than redirecting, so /hwahee stays in the address
+              bar and is what Back returns to. */}
+          <Route path="/hwahee" element={<DesignSystemPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
