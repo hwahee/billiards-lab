@@ -843,7 +843,12 @@ html {
   height: var(--sheet-max-height);
 }
 
-.overlay[data-variant='sidebar'] .overlay__panel {
+/* The drawer rules below say `dialog`: the docked sidebar (`.overlay--inline`)
+   carries the same variant and side but is an `<aside>`, which never has
+   `open`. Unscoped, it would take the drawer's square edges and — worse —
+   the closed-state transform, parking the panel a full width off to the
+   start of its own box. */
+dialog.overlay[data-variant='sidebar'] .overlay__panel {
   width: var(--sidebar-width);
   max-width: 100%;
   height: 100%;
@@ -964,11 +969,11 @@ html {
     transform: translateY(100%);
   }
 
-  .overlay[data-variant='sidebar']:not([open]) .overlay__panel {
+  dialog.overlay[data-variant='sidebar']:not([open]) .overlay__panel {
     transform: translateX(-100%);
   }
 
-  .overlay[data-variant='sidebar'][data-side='end']:not([open]) .overlay__panel {
+  dialog.overlay[data-variant='sidebar'][data-side='end']:not([open]) .overlay__panel {
     transform: translateX(100%);
   }
 
