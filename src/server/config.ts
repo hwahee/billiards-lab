@@ -10,7 +10,7 @@ import { s, toValidator, type Infer } from '@shared/validation';
 const configValidator = toValidator(
   s.object({
     appEnv: s._default(s.enum(['local', 'development', 'production']), 'local'),
-    port: s._default(s.int().check(s.gte(0), s.lte(65535)), 3000),
+    port: s._default(s.int().check(s.gte(0), s.lte(65535)), 3001),
     /** `memory` runs without any external service — used by tests and quick hacking. */
     dbDriver: s._default(s.enum(['postgres', 'memory']), 'postgres'),
     databaseUrl: s.optional(s.string().check(s.minLength(1))),

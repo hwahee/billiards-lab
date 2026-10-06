@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_local_password}
       POSTGRES_DB: ${POSTGRES_DB:-app}
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -36,13 +36,13 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: development
-      PORT: 3000
+      PORT: 3001
       DB_DRIVER: postgres
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_local_password}@db:5432/${POSTGRES_DB:-app}
       CORS_ORIGINS: ''
       SERVER_ROLE: all
     ports:
-      - '3000:3000'
+      - '3001:3001'
 
 volumes:
   db-data:

@@ -35,7 +35,7 @@ bun install               # 의존성 설치 (+ husky 훅 설치)
 cp .env.example .env      # 환경 설정 — 비밀값은 절대 커밋 금지
 
 bun run db:setup          # docker로 Postgres 기동 + 마이그레이션 + 시드 (한 번에)
-bun run dev               # 개발 서버 (서버 watch + 클라이언트 HMR) → http://localhost:3000
+bun run dev               # 개발 서버 (서버 watch + 클라이언트 HMR) → http://localhost:3001
 ```
 
 DB 없이 바로 실행하려면 `.env`에서 `DB_DRIVER=memory`로 바꾸면 됩니다(테스트도 이 드라이버를 사용).
