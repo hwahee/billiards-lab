@@ -10,7 +10,14 @@
  */
 
 export type ApiErrorCode =
-  'VALIDATION_ERROR' | 'NOT_FOUND' | 'FORBIDDEN' | 'VERSION_MISMATCH' | 'INTERNAL_ERROR';
+  | 'VALIDATION_ERROR'
+  /** 401 — the request carries no (valid) signed-in user. */
+  | 'UNAUTHORIZED'
+  | 'NOT_FOUND'
+  /** 403 — the caller is known but may not do this right now (e.g. not their turn). */
+  | 'FORBIDDEN'
+  | 'VERSION_MISMATCH'
+  | 'INTERNAL_ERROR';
 
 export interface ApiErrorBody {
   error: {

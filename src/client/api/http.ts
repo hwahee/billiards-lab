@@ -24,6 +24,20 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * Whether retrying a failed request could change the outcome. A 4xx is the
+ * server's settled answer about *this* request (a 401 for a signed-out user,
+ * a 404, a validation error), so retrying it only delays showing that answer;
+ * 408 and 429 are the exceptions because they are about timing. Anything
+ * else — 5xx, a network failure — may well succeed on a second try.
+ */
+export function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof ApiRequestError)) return true;
+  const { status } = error;
+  if (status === 408 || status === 429) return true;
+  return status < 400 || status >= 500;
+}
+
 interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;

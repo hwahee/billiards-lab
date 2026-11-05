@@ -12,18 +12,33 @@
 export const TESTID = {
   app: {
     header: 'app.header',
+    /** The service name in the header — a link home. */
+    homeLink: 'app.header.home-link',
+    /** Kept from the old header nav; the links now sit in the footer's bottom line. */
     navTodos: 'app.nav.todos',
-    navBilliards: 'app.nav.billiards',
     navDesignSystem: 'app.nav.design-system',
     themeToggle: 'app.controls.theme-toggle',
     designToggle: 'app.controls.design-toggle',
     localeSelect: 'app.controls.locale-select',
+    account: {
+      signIn: 'app.account.sign-in',
+      user: 'app.account.user',
+      signOut: 'app.account.sign-out',
+    },
+    footer: 'app.footer',
+    /** The <ul> of services rendered from /sitemap.json (absent while loading). */
+    footerServices: 'app.footer.services',
+    footerGithub: 'app.footer.github',
+    footerCopyright: 'app.footer.copyright',
+    /** The bottom line's links: the design system, then terms and privacy. */
+    footerLegal: 'app.footer.legal',
   },
   todos: {
     page: 'todos.page',
     createForm: 'todos.create.form',
     createInput: 'todos.create.input',
     createSubmit: 'todos.create.submit',
+    guestHint: 'todos.guest-hint',
     filterStatus: 'todos.filter.status',
     sortBy: 'todos.sort.by',
     list: 'todos.list',
@@ -59,6 +74,20 @@ export const TESTID = {
     aimHudPower: 'billiards.aim-hud.power',
     hudHint: 'billiards.hud.hint',
   },
+  home: {
+    page: 'home.page',
+    chat: {
+      panel: 'home.chat.panel',
+      status: 'home.chat.status',
+      participants: 'home.chat.participants',
+      log: 'home.chat.log',
+      message: (seq: number) => `home.chat.message.${seq}`,
+      empty: 'home.chat.empty',
+      form: 'home.chat.form',
+      input: 'home.chat.input',
+      send: 'home.chat.send',
+    },
+  },
   designSystem: {
     page: 'design-system.page',
     section: (name: string) => `design-system.section.${name}`,
@@ -84,5 +113,11 @@ export const TESTID = {
   notFound: {
     page: 'not-found.page',
     homeLink: 'not-found.home-link',
+  },
+  signInFailed: {
+    page: 'sign-in-failed.page',
+    message: 'sign-in-failed.message',
+    retry: 'sign-in-failed.retry',
+    homeLink: 'sign-in-failed.home-link',
   },
 } as const;

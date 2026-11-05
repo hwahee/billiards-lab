@@ -8,14 +8,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 
 import type { BilliardsLiveMessage } from '@shared/billiards/room';
 
-import { bridgePubSubToWebSocket, buildApp } from '../app';
+import { bridgePubSubToWebSocket, buildApp, type SocketData } from '../app';
 import { loadServerConfig } from '../config';
 import { createContainer, type Container } from '../container';
 import { silentLogger } from '../lib/log';
 import type { AppState } from '../routes/health';
 
 let container: Container;
-let server: Bun.Server<undefined>;
+let server: Bun.Server<SocketData>;
 let baseUrl: string;
 let unbridge: () => Promise<void>;
 

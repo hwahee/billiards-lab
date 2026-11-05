@@ -142,7 +142,8 @@ export function Accordion({ items, mode = 'single', defaultOpenIds, testId }: Ac
     let startedAt: number | null = null;
     const step = (now: DOMHighResTimeStamp) => {
       if (anchorGeneration.current !== generation) return; // superseded by a newer toggle
-      startedAt ??= now;
+      // Spelled out rather than `??=`: React Compiler skips a component using logical assignment.
+      if (startedAt === null) startedAt = now;
       holdAnchor();
       if (now - startedAt < settleMs + SETTLE_SLACK_MS) {
         requestAnimationFrame(step);

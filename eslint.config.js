@@ -88,6 +88,23 @@ export default tseslint.config(
       ],
     },
   },
+  // React Compiler skips a whole component that uses logical assignment
+  // (`||=`, `??=`, `&&=`) — silently, leaving it unmemoized (CLAUDE.md).
+  {
+    files: ['src/client/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'AssignmentExpression[operator=/^(\\|\\||&&|\\?\\?)=$/]',
+          message:
+            'React Compiler skips a component that uses logical assignment. Spell it out: `if (!x) x = y`.',
+        },
+      ],
+      // …and so the spelled-out `if (x === null) x = y` must not be pushed back to `??=`.
+      '@typescript-eslint/prefer-nullish-coalescing': ['error', { ignoreIfStatements: true }],
+    },
+  },
   // Boundary: shared may not import from client nor server at all.
   {
     files: ['src/shared/**/*.{ts,tsx}'],

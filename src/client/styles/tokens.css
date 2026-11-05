@@ -3,12 +3,12 @@
  *
  * Three layers:
  *   1. Primitives (:root)        — raw values, never used by components.
- *   2. Design-variant dimensions — [data-design='a'|'b'] sizing/typography.
+ *   2. Design-variant dimensions — [data-design] sizing/typography.
  *   3. Semantic colors           — [data-design][data-theme] combinations.
  *
  * Components consume ONLY semantic tokens (--color-*, --font-size-*,
  * --control-*), which is what makes theme (light/dark) and design variant
- * (A = aesthetic-first, B = visibility-first) switchable with a single
+ * (standard, contrast, office, kids) switchable with a single
  * attribute change on <html>.
  * ==========================================================================*/
 
@@ -42,8 +42,8 @@
      slow enough for the eye to track where content moved. */
   --duration-expand: 240ms;
 
-  /* Motion knobs consumed by interaction rules. Neutral by default (designs A/B
-     stay calm); the kids skin overrides these to exaggerate every interaction. */
+  /* Motion knobs consumed by interaction rules. Neutral by default (standard and
+     contrast stay calm); the kids skin overrides these to exaggerate every interaction. */
   --ease-interaction: ease;
   --hover-scale: 1;
   --hover-lift: 0px;
@@ -68,8 +68,11 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* ── Design A: aesthetic-first — refined type scale, soft edges ───────────── */
-[data-design='a'] {
+/* ── Design "standard" (the default) and "contrast": one shape ────────── */
+/* Contrast is standard with stronger colors (below), not a different
+   layout: same type scale, control sizes and corners. */
+[data-design='standard'],
+[data-design='contrast'] {
   --font-size-sm: 0.8125rem;
   --font-size-body: 0.9375rem;
   --font-size-lg: 1.125rem;
@@ -87,24 +90,12 @@
   --surface-shadow: 0 1px 3px rgb(0 0 0 / 8%);
 }
 
-/* ── Design B: visibility-first — bigger type, thick borders, high contrast ─ */
-[data-design='b'] {
+/* The only non-color differences: lines that carry contrast get thicker, and
+   the scrim darker, so edges and focus read without relying on hue. */
+[data-design='contrast'] {
   --overlay-scrim: rgb(0 0 0 / 65%);
-  --font-size-sm: 1rem;
-  --font-size-body: 1.125rem;
-  --font-size-lg: 1.3125rem;
-  --font-size-xl: 1.75rem;
-  --font-size-2xl: 2.25rem;
-  --font-weight-heading: 750;
-  --line-height-body: 1.7;
-
-  --control-height: 3rem;
-  --control-padding-x: var(--space-4);
-  --radius-control: var(--radius-sm);
-  --radius-surface: var(--radius-sm);
   --border-width: 2px;
   --focus-ring-width: 4px;
-  --surface-shadow: none;
 }
 
 /* ── Design "office": 2000s–2010s MS Office — dense, beveled, businesslike ─── */
@@ -169,8 +160,8 @@
   --focus-scale: 1.04;
 }
 
-/* ── Semantic colors: design A ────────────────────────────────────────────── */
-[data-design='a'][data-theme='light'] {
+/* ── Semantic colors: design "standard" ───────────────────────────────────── */
+[data-design='standard'][data-theme='light'] {
   color-scheme: light;
   --color-bg: #f6f6fa;
   --color-surface: #ffffff;
@@ -188,7 +179,7 @@
   --color-focus: #5b5bd6;
 }
 
-[data-design='a'][data-theme='dark'] {
+[data-design='standard'][data-theme='dark'] {
   color-scheme: dark;
   --color-bg: #14161e;
   --color-surface: #1d2029;
@@ -206,8 +197,8 @@
   --color-focus: #8f8ff2;
 }
 
-/* ── Semantic colors: design B (WCAG-AAA-leaning contrast) ────────────────── */
-[data-design='b'][data-theme='light'] {
+/* ── Semantic colors: design "contrast" (WCAG-AAA-leaning) ─────────── */
+[data-design='contrast'][data-theme='light'] {
   color-scheme: light;
   --color-bg: #ffffff;
   --color-surface: #ffffff;
@@ -225,7 +216,7 @@
   --color-focus: #0038a8;
 }
 
-[data-design='b'][data-theme='dark'] {
+[data-design='contrast'][data-theme='dark'] {
   color-scheme: dark;
   --color-bg: #000000;
   --color-surface: #0d0d0d;

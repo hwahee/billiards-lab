@@ -11,7 +11,6 @@ export const en = {
 
   'nav.todos': 'Todos',
   'nav.designSystem': 'Design System',
-  'nav.billiards': 'Billiards',
 
   'common.skipToContent': 'Skip to main content',
   'common.loading': 'Loading…',
@@ -25,16 +24,24 @@ export const en = {
   'common.nextPage': 'Next page',
   'common.theme.light': 'Switch to light theme',
   'common.theme.dark': 'Switch to dark theme',
-  'common.design.a': 'Design A (aesthetic)',
-  'common.design.b': 'Design B (high visibility)',
+  'common.design.standard': 'Standard skin',
+  'common.design.contrast': 'High-contrast skin (high visibility)',
   'common.design.office': 'Office skin (classic desktop)',
   'common.design.kids': 'Kids skin (playground)',
   'common.language': 'Language',
+
+  'footer.otherServices': 'Other Services',
+  'footer.connect': 'Connect',
+  'footer.github': 'GitHub',
+  'footer.terms': 'Terms of Service',
+  'footer.privacy': 'Privacy Policy',
+  'footer.copyright': '© {year} {site}',
 
   'todos.title': 'Todos',
   'todos.description': 'A small demo domain exercising the full stack.',
   'todos.createLabel': 'New todo title',
   'todos.createPlaceholder': 'What needs to be done?',
+  'todos.guestHint': 'Sign in to add, check off and delete todos.',
   'todos.createSubmit': 'Add todo',
   'todos.empty': 'Nothing here yet. Add your first todo above.',
   'todos.filterLabel': 'Filter by status',
@@ -51,6 +58,23 @@ export const en = {
   'todos.loadFailed': 'Could not load todos.',
   'todos.total': '{count} items in total',
 
+  'chat.title': 'Chat',
+  'chat.description': 'One room for everyone on this page — guests included.',
+  'chat.status.connecting': 'Connecting…',
+  'chat.status.live': 'Live',
+  'chat.status.reconnecting': 'Reconnecting…',
+  'chat.status.unavailable': 'Unavailable',
+  'chat.participants': '{count} here',
+  'chat.moreParticipants': '+{count} more',
+  'chat.guestName': 'Guest {id}',
+  'chat.you': 'you',
+  'chat.log': 'Chat messages',
+  'chat.empty': 'No messages yet. Say hello!',
+  'chat.inputLabel': 'Message',
+  'chat.inputPlaceholder': 'Type a message',
+  'chat.send': 'Send',
+  'chat.sendFailed': 'The message could not be sent.',
+
   'palette.recent': 'Recently used',
   'palette.hexLabel': 'Hex value',
   'palette.hexInvalid': 'Use a color like #5b5bd6 or #5b5bd680.',
@@ -59,7 +83,7 @@ export const en = {
 
   'designSystem.title': 'Design System',
   'designSystem.description':
-    'Every token and component in one place. Use the header controls to toggle theme (light/dark), design variant (A / B / Office / Kids) and language.',
+    'Every token and component in one place. Use the footer controls to toggle theme (light/dark), design variant (Standard / Contrast / Office / Kids) and language.',
   'designSystem.colors': 'Color tokens',
   'designSystem.typography': 'Typography',
   'designSystem.buttons': 'Buttons',
@@ -136,10 +160,19 @@ export const en = {
   'billiards.turn.opponent': "Opponent's turn",
   'billiards.turn.watching': 'Watching — both seats are taken',
 
+  'auth.signIn': 'Sign in',
+  'auth.signOut': 'Sign out',
+  'auth.signedInAs': 'Signed in as {name}',
+  'auth.signInFailed.title': 'Sign-in did not finish',
+  'auth.signInFailed.message':
+    'The sign-in was turned down, took too long, or was already used. You are not signed in — please try again.',
+  'auth.signInFailed.retry': 'Sign in again',
+
   'notFound.title': 'Page not found',
   'notFound.goHome': 'Go to home',
 
   'error.validation': 'The request contains invalid data.',
+  'error.unauthorized': 'Please sign in to continue.',
   'error.notFound': 'The requested resource was not found.',
   'error.forbidden': 'You are not allowed to do that right now.',
   'error.internal': 'An unexpected error occurred. Please try again.',

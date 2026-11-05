@@ -7,14 +7,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 
 import type { BilliardsCommand, BilliardsRoomSnapshot } from '@shared/billiards/room';
 
-import { buildApp } from '../app';
+import { buildApp, type SocketData } from '../app';
 import { loadServerConfig } from '../config';
 import { createContainer, type Container } from '../container';
 import { silentLogger } from '../lib/log';
 import type { AppState } from '../routes/health';
 
 let container: Container;
-let server: Bun.Server<undefined>;
+let server: Bun.Server<SocketData>;
 let baseUrl: string;
 
 beforeAll(() => {

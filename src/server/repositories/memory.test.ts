@@ -3,7 +3,12 @@ import { describe, expect, test } from 'bun:test';
 import { listTodosQueryValidator, type Todo } from '@shared/domain/todo';
 import type { UtcIsoString } from '@shared/time';
 
-import { createMemoryTodoRepository, createMemoryUnitOfWork, MemoryStore } from './memory';
+import {
+  createMemoryAuditLogRepository,
+  createMemoryTodoRepository,
+  createMemoryUnitOfWork,
+  MemoryStore,
+} from './memory';
 
 function makeTodo(overrides: Partial<Todo> & Pick<Todo, 'id' | 'title'>): Todo {
   return {
@@ -102,5 +107,42 @@ describe('memory unit of work', () => {
 
     expect(store.todos.has('x')).toBe(false);
     expect(store.todos.has('1')).toBe(true);
+  });
+
+  test('rollback covers every table, not only todos', async () => {
+    const store = seededStore();
+    const auditLogs = createMemoryAuditLogRepository(store);
+    const uow = createMemoryUnitOfWork(store);
+
+    await expect(
+      uow.run(async (tx) => {
+        await auditLogs.append(
+          {
+            entityType: 'todo',
+            entityId: '1',
+            action: 'todo.deleted',
+            createdAt: '2026-01-04T00:00:00.000Z' as UtcIsoString,
+          },
+          tx,
+        );
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(store.auditLogs).toEqual([]);
+  });
+
+  test('a rolled-back transaction cannot leak mutations through shared row objects', async () => {
+    const store = seededStore();
+    const uow = createMemoryUnitOfWork(store);
+
+    await expect(
+      uow.run(() => {
+        store.todos.get('1')!.title = 'mutated in place';
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(store.todos.get('1')?.title).toBe('Alpha');
   });
 });

@@ -7,6 +7,9 @@
  * across instances; with the memory driver they stay in-process.
  *
  * Register new job types in `JOB_HANDLERS`.
+ *
+ * Besides jobs, the worker sweeps chat messages past their room's retention.
+ * With several workers each one sweeps; the deletes simply overlap.
  */
 import { s, toValidator } from '@shared/validation';
 
@@ -18,6 +21,9 @@ const jobValidator = toValidator(
     type: s.string().check(s.minLength(1)),
   }),
 );
+
+/** How often chat messages past their room's retention are deleted. */
+const CHAT_PURGE_INTERVAL_MS = 60_000;
 
 type JobHandler = (job: Record<string, unknown>, container: Container) => Promise<void>;
 
@@ -50,6 +56,24 @@ export async function startWorker(container: Container): Promise<() => Promise<v
       });
     });
   });
+
+  const purgeChat = setInterval(() => {
+    container
+      .chatService()
+      .purgeExpired()
+      .then((deleted) => {
+        if (deleted > 0) log.info('expired chat messages deleted', { deleted });
+      })
+      .catch((error: unknown) => {
+        log.error('chat purge failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, CHAT_PURGE_INTERVAL_MS);
+
   log.info('worker started', { channel: CHANNELS.jobs });
-  return unsubscribe;
+  return async () => {
+    clearInterval(purgeChat);
+    await unsubscribe();
+  };
 }

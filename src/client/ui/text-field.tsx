@@ -7,14 +7,16 @@ interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id
   error?: string;
   /** Required: every interactive element must be automatable (docs/ui-automation.md). */
   testId: string;
+  /** Visually hides the label (it stays available to assistive tech). */
+  hideLabel?: boolean;
 }
 
-export function TextField({ label, error, testId, ...rest }: TextFieldProps) {
+export function TextField({ label, error, testId, hideLabel, ...rest }: TextFieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   return (
     <div className="field">
-      <label className="field__label" htmlFor={id}>
+      <label className={hideLabel ? 'visually-hidden' : 'field__label'} htmlFor={id}>
         {label}
       </label>
       <input

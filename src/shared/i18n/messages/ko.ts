@@ -7,7 +7,6 @@ export const ko: Record<MessageKey, string> = {
 
   'nav.todos': '할 일',
   'nav.designSystem': '디자인 시스템',
-  'nav.billiards': '당구',
 
   'common.skipToContent': '본문으로 건너뛰기',
   'common.loading': '불러오는 중…',
@@ -21,16 +20,24 @@ export const ko: Record<MessageKey, string> = {
   'common.nextPage': '다음 페이지',
   'common.theme.light': '라이트 테마로 전환',
   'common.theme.dark': '다크 테마로 전환',
-  'common.design.a': '디자인 A (심미성)',
-  'common.design.b': '디자인 B (시인성)',
+  'common.design.standard': '기본 스킨',
+  'common.design.contrast': '고대비 스킨 (시인성)',
   'common.design.office': '오피스 스킨 (클래식 데스크톱)',
   'common.design.kids': '어린이 스킨 (놀이터)',
   'common.language': '언어',
+
+  'footer.otherServices': '관련 서비스',
+  'footer.connect': '연결',
+  'footer.github': 'GitHub',
+  'footer.terms': '이용약관',
+  'footer.privacy': '개인정보처리방침',
+  'footer.copyright': '© {year} {site}',
 
   'todos.title': '할 일',
   'todos.description': '풀스택 전체를 관통하는 작은 데모 도메인입니다.',
   'todos.createLabel': '새 할 일 제목',
   'todos.createPlaceholder': '무엇을 해야 하나요?',
+  'todos.guestHint': '로그인하면 할 일을 추가하고, 완료 표시하고, 삭제할 수 있습니다.',
   'todos.createSubmit': '할 일 추가',
   'todos.empty': '아직 아무것도 없습니다. 위에서 첫 할 일을 추가해 보세요.',
   'todos.filterLabel': '상태로 필터',
@@ -47,6 +54,23 @@ export const ko: Record<MessageKey, string> = {
   'todos.loadFailed': '할 일 목록을 불러오지 못했습니다.',
   'todos.total': '총 {count}개',
 
+  'chat.title': '채팅',
+  'chat.description': '이 페이지에 들어온 모두가 함께 쓰는 방입니다. 게스트도 참여할 수 있습니다.',
+  'chat.status.connecting': '연결 중…',
+  'chat.status.live': '실시간',
+  'chat.status.reconnecting': '다시 연결 중…',
+  'chat.status.unavailable': '사용할 수 없음',
+  'chat.participants': '접속 중 {count}명',
+  'chat.moreParticipants': '외 {count}명',
+  'chat.guestName': '게스트 {id}',
+  'chat.you': '나',
+  'chat.log': '채팅 메시지',
+  'chat.empty': '아직 대화가 없습니다. 먼저 인사해 보세요!',
+  'chat.inputLabel': '메시지',
+  'chat.inputPlaceholder': '메시지를 입력하세요',
+  'chat.send': '보내기',
+  'chat.sendFailed': '메시지를 보내지 못했습니다.',
+
   'palette.recent': '최근 사용',
   'palette.hexLabel': 'HEX 값',
   'palette.hexInvalid': '#5b5bd6 또는 #5b5bd680 형식으로 입력하세요.',
@@ -55,7 +79,7 @@ export const ko: Record<MessageKey, string> = {
 
   'designSystem.title': '디자인 시스템',
   'designSystem.description':
-    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 헤더의 컨트롤로 테마(라이트/다크), 디자인(A / B / 오피스 / 어린이), 언어를 전환해 보세요.',
+    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 푸터의 컨트롤로 테마(라이트/다크), 디자인(기본 / 고대비 / 오피스 / 어린이), 언어를 전환해 보세요.',
   'designSystem.colors': '컬러 토큰',
   'designSystem.typography': '타이포그래피',
   'designSystem.buttons': '버튼',
@@ -131,10 +155,19 @@ export const ko: Record<MessageKey, string> = {
   'billiards.turn.opponent': '상대 차례입니다',
   'billiards.turn.watching': '관전 중입니다 — 두 자리가 모두 찼습니다',
 
+  'auth.signIn': '로그인',
+  'auth.signOut': '로그아웃',
+  'auth.signedInAs': '{name}(으)로 로그인됨',
+  'auth.signInFailed.title': '로그인을 마치지 못했습니다',
+  'auth.signInFailed.message':
+    '로그인이 거절되었거나, 시간이 너무 지났거나, 이미 사용된 요청입니다. 로그인되지 않았으니 다시 시도해 주세요.',
+  'auth.signInFailed.retry': '다시 로그인',
+
   'notFound.title': '페이지를 찾을 수 없습니다',
   'notFound.goHome': '홈으로 이동',
 
   'error.validation': '요청에 잘못된 데이터가 포함되어 있습니다.',
+  'error.unauthorized': '로그인이 필요합니다.',
   'error.notFound': '요청한 리소스를 찾을 수 없습니다.',
   'error.forbidden': '지금은 허용되지 않는 요청입니다.',
   'error.internal': '예기치 않은 오류가 발생했습니다. 다시 시도해 주세요.',
