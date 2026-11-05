@@ -19,7 +19,7 @@ const LOCALE_LABELS: Record<Locale, string> = { en: 'English', ko: '한국어' }
 /** Short label shown on the design toggle button. */
 const DESIGN_BADGES: Record<Design, string> = {
   standard: 'Standard',
-  'high-contrast': 'High contrast',
+  contrast: 'Contrast',
   office: 'Office',
   kids: 'Kids',
 };
@@ -27,7 +27,7 @@ const DESIGN_BADGES: Record<Design, string> = {
 /** i18n key describing each design, for the toggle's aria-label. */
 const DESIGN_LABEL_KEYS = {
   standard: 'common.design.standard',
-  'high-contrast': 'common.design.highContrast',
+  contrast: 'common.design.contrast',
   office: 'common.design.office',
   kids: 'common.design.kids',
 } as const;

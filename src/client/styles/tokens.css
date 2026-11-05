@@ -8,7 +8,7 @@
  *
  * Components consume ONLY semantic tokens (--color-*, --font-size-*,
  * --control-*), which is what makes theme (light/dark) and design variant
- * (standard, high-contrast, office, kids) switchable with a single
+ * (standard, contrast, office, kids) switchable with a single
  * attribute change on <html>.
  * ==========================================================================*/
 
@@ -43,7 +43,7 @@
   --duration-expand: 240ms;
 
   /* Motion knobs consumed by interaction rules. Neutral by default (standard and
-     high-contrast stay calm); the kids skin overrides these to exaggerate every interaction. */
+     contrast stay calm); the kids skin overrides these to exaggerate every interaction. */
   --ease-interaction: ease;
   --hover-scale: 1;
   --hover-lift: 0px;
@@ -68,11 +68,11 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* ── Design "standard" (the default) and "high-contrast": one shape ────────── */
-/* High-contrast is standard with stronger colors (below), not a different
+/* ── Design "standard" (the default) and "contrast": one shape ────────── */
+/* Contrast is standard with stronger colors (below), not a different
    layout: same type scale, control sizes and corners. */
 [data-design='standard'],
-[data-design='high-contrast'] {
+[data-design='contrast'] {
   --font-size-sm: 0.8125rem;
   --font-size-body: 0.9375rem;
   --font-size-lg: 1.125rem;
@@ -92,7 +92,7 @@
 
 /* The only non-color differences: lines that carry contrast get thicker, and
    the scrim darker, so edges and focus read without relying on hue. */
-[data-design='high-contrast'] {
+[data-design='contrast'] {
   --overlay-scrim: rgb(0 0 0 / 65%);
   --border-width: 2px;
   --focus-ring-width: 4px;
@@ -197,8 +197,8 @@
   --color-focus: #8f8ff2;
 }
 
-/* ── Semantic colors: design "high-contrast" (WCAG-AAA-leaning) ─────────── */
-[data-design='high-contrast'][data-theme='light'] {
+/* ── Semantic colors: design "contrast" (WCAG-AAA-leaning) ─────────── */
+[data-design='contrast'][data-theme='light'] {
   color-scheme: light;
   --color-bg: #ffffff;
   --color-surface: #ffffff;
@@ -216,7 +216,7 @@
   --color-focus: #0038a8;
 }
 
-[data-design='high-contrast'][data-theme='dark'] {
+[data-design='contrast'][data-theme='dark'] {
   color-scheme: dark;
   --color-bg: #000000;
   --color-surface: #0d0d0d;

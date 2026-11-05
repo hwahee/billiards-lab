@@ -20,7 +20,7 @@ export const ko: Record<MessageKey, string> = {
   'common.theme.light': '라이트 테마로 전환',
   'common.theme.dark': '다크 테마로 전환',
   'common.design.standard': '기본 스킨',
-  'common.design.highContrast': '고대비 스킨 (시인성)',
+  'common.design.contrast': '고대비 스킨 (시인성)',
   'common.design.office': '오피스 스킨 (클래식 데스크톱)',
   'common.design.kids': '어린이 스킨 (놀이터)',
   'common.language': '언어',

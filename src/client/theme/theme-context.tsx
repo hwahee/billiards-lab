@@ -3,9 +3,9 @@
  * and consumed purely by CSS custom properties (src/client/styles/tokens.css):
  *
  *   data-theme:  'light' | 'dark'     — color scheme
- *   data-design: 'standard' | 'high-contrast' | 'office' | 'kids' — design variant:
+ *   data-design: 'standard' | 'contrast' | 'office' | 'kids' — design variant:
  *       Standard      = the default (refined spacing, softer contrast)
- *       High-contrast = standard's shape with high-contrast colors
+ *       Contrast = standard's shape with high-contrast colors
  *       Office        = 2000s MS Office (dense, beveled controls, no motion)
  *       Kids          = playground/toy vibe (chunky, rounded, exaggerated motion)
  *
@@ -18,10 +18,10 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 export type { Design, Theme };
 
-/** The design a toggle click moves to next — cycles Standard → High-contrast → Office → Kids → Standard. */
+/** The design a toggle click moves to next — cycles Standard → Contrast → Office → Kids → Standard. */
 const NEXT_DESIGN: Record<Design, Design> = {
-  standard: 'high-contrast',
-  'high-contrast': 'office',
+  standard: 'contrast',
+  contrast: 'office',
   office: 'kids',
   kids: 'standard',
 };

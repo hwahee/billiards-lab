@@ -24,7 +24,7 @@ export const en = {
   'common.theme.light': 'Switch to light theme',
   'common.theme.dark': 'Switch to dark theme',
   'common.design.standard': 'Standard skin',
-  'common.design.highContrast': 'High-contrast skin (high visibility)',
+  'common.design.contrast': 'High-contrast skin (high visibility)',
   'common.design.office': 'Office skin (classic desktop)',
   'common.design.kids': 'Kids skin (playground)',
   'common.language': 'Language',
@@ -82,7 +82,7 @@ export const en = {
 
   'designSystem.title': 'Design System',
   'designSystem.description':
-    'Every token and component in one place. Use the footer controls to toggle theme (light/dark), design variant (Standard / High contrast / Office / Kids) and language.',
+    'Every token and component in one place. Use the footer controls to toggle theme (light/dark), design variant (Standard / Contrast / Office / Kids) and language.',
   'designSystem.colors': 'Color tokens',
   'designSystem.typography': 'Typography',
   'designSystem.buttons': 'Buttons',

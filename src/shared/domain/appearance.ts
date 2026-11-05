@@ -9,7 +9,7 @@
  * `/api/auth/login` carries the same names, so one parser serves both hops:
  *
  *   theme=light|dark
- *   design=standard|high-contrast|office|kids  (also the old a|b, see below)
+ *   design=standard|contrast|office|kids  (also the old a|b, see below)
  *   ui_locales=ko en   — the first one we speak wins
  *
  * Anything missing or unknown is left out.
@@ -17,7 +17,7 @@
 import { isLocale, type Locale } from '../i18n';
 
 const THEMES = ['light', 'dark'] as const;
-const DESIGNS = ['standard', 'high-contrast', 'office', 'kids'] as const;
+const DESIGNS = ['standard', 'contrast', 'office', 'kids'] as const;
 
 export type Theme = (typeof THEMES)[number];
 export type Design = (typeof DESIGNS)[number];
@@ -29,7 +29,7 @@ export type Design = (typeof DESIGNS)[number];
  */
 const RENAMED_DESIGNS = new Map<string, Design>([
   ['a', 'standard'],
-  ['b', 'high-contrast'],
+  ['b', 'contrast'],
 ]);
 
 export interface Appearance {

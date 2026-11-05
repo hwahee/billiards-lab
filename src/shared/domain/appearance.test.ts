@@ -20,12 +20,12 @@ describe('appearance', () => {
 
   test('reads the old design names as the new ones', () => {
     expect(designFrom('a')).toBe('standard');
-    expect(designFrom('b')).toBe('high-contrast');
-    expect(designFrom('high-contrast')).toBe('high-contrast');
+    expect(designFrom('b')).toBe('contrast');
+    expect(designFrom('contrast')).toBe('contrast');
     expect(designFrom('constructor')).toBeUndefined();
     expect(designFrom(null)).toBeUndefined();
     expect(appearanceFromParams(new URLSearchParams({ design: 'b' }))).toEqual({
-      design: 'high-contrast',
+      design: 'contrast',
     });
   });
 

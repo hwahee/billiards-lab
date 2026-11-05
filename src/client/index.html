@@ -18,11 +18,9 @@
         // Old names (a, b) as in appearance.ts designFrom().
         var design = localStorage.getItem('app.design');
         if (design === 'a') design = 'standard';
-        if (design === 'b') design = 'high-contrast';
+        if (design === 'b') design = 'contrast';
         root.dataset.design =
-          design === 'high-contrast' || design === 'office' || design === 'kids'
-            ? design
-            : 'standard';
+          design === 'contrast' || design === 'office' || design === 'kids' ? design : 'standard';
         var locale = localStorage.getItem('app.locale');
         if (locale === 'en' || locale === 'ko') root.lang = locale;
       } catch (_) {

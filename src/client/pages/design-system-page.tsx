@@ -1,7 +1,7 @@
 /**
  * Design System — every token and component visible in one place, in every
  * state. The footer controls switch theme (light/dark), design variant
- * (standard / high-contrast / office / kids) and language live on this page,
+ * (standard / contrast / office / kids) and language live on this page,
  * because everything below renders exclusively from semantic CSS tokens.
  */
 import { hexColor, type HexColor } from '@shared/color';

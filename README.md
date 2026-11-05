@@ -268,7 +268,7 @@ SIGTERM/SIGINT 수신 시: ① readiness가 즉시 503으로 바뀌어 LB가 트
   (`/api/*`는 제외 — 없는 API 경로는 JSON 404).
 - **디자인 시스템**: 토큰 3계층(원시 → 디자인 치수 → 시맨틱 컬러)으로 구성되며
   `/design-system` 페이지에서 전부 확인할 수 있습니다. `<html>`의 `data-theme`
-  (light/dark)와 `data-design`(`standard` 기본 / `high-contrast` 고대비 / `office` / `kids`) 속성만으로 전환됩니다 — 푸터의 토글
+  (light/dark)와 `data-design`(`standard` 기본 / `contrast` 고대비 / `office` / `kids`) 속성만으로 전환됩니다 — 푸터의 토글
   버튼으로 즉시 스위칭됩니다. 아이콘은 lucide-react. 색상 입력(`Palette`)은 Popover API
   top layer에 떠서 어떤 `overflow` 조상 안에서도 잘리지 않으며, 값은 알파를 포함한 정규화
   hex 문자열입니다 — 설계 근거는 **[docs/palette-design.md](docs/palette-design.md)** 참고.
