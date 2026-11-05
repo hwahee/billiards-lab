@@ -72,7 +72,7 @@ describe('contrastRatio', () => {
     expect(contrastRatio(hexColor('#5b5bd6'), hexColor('#5b5bd6'))).toBeCloseTo(1, 5);
   });
 
-  test('matches the known ratio of the design-A primary on white', () => {
+  test('matches the known ratio of the standard skin primary on white', () => {
     // #5b5bd6 on #ffffff — passes AA for normal text (>= 4.5).
     expect(contrastRatio(hexColor('#5b5bd6'), white)).toBeGreaterThan(4.5);
     expect(contrastRatio(hexColor('#5b5bd6'), white)).toBeLessThan(21);
