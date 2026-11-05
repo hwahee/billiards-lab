@@ -5,7 +5,6 @@ export const ko: Record<MessageKey, string> = {
   'app.title': 'Bun 풀스택 보일러플레이트',
   'app.tagline': 'React · Bun · Bun server 모노레포 스타터',
 
-  'nav.todos': '할 일',
   'nav.designSystem': '디자인 시스템',
 
   'common.skipToContent': '본문으로 건너뛰기',
@@ -25,6 +24,13 @@ export const ko: Record<MessageKey, string> = {
   'common.design.office': '오피스 스킨 (클래식 데스크톱)',
   'common.design.kids': '어린이 스킨 (놀이터)',
   'common.language': '언어',
+
+  'footer.otherServices': '관련 서비스',
+  'footer.connect': '연결',
+  'footer.github': 'GitHub',
+  'footer.terms': '이용약관',
+  'footer.privacy': '개인정보처리방침',
+  'footer.copyright': '© {year} {site}',
 
   'todos.title': '할 일',
   'todos.description': '풀스택 전체를 관통하는 작은 데모 도메인입니다.',
@@ -72,7 +78,7 @@ export const ko: Record<MessageKey, string> = {
 
   'designSystem.title': '디자인 시스템',
   'designSystem.description':
-    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 헤더의 컨트롤로 테마(라이트/다크), 디자인(A / B / 오피스 / 어린이), 언어를 전환해 보세요.',
+    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 푸터의 컨트롤로 테마(라이트/다크), 디자인(A / B / 오피스 / 어린이), 언어를 전환해 보세요.',
   'designSystem.colors': '컬러 토큰',
   'designSystem.typography': '타이포그래피',
   'designSystem.buttons': '버튼',

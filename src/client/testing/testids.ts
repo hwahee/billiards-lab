@@ -12,7 +12,9 @@
 export const TESTID = {
   app: {
     header: 'app.header',
-    navTodos: 'app.nav.todos',
+    /** The service name in the header — a link home. */
+    homeLink: 'app.header.home-link',
+    /** Kept from the old header nav; the link now sits in the footer's bottom line. */
     navDesignSystem: 'app.nav.design-system',
     themeToggle: 'app.controls.theme-toggle',
     designToggle: 'app.controls.design-toggle',
@@ -22,6 +24,13 @@ export const TESTID = {
       user: 'app.account.user',
       signOut: 'app.account.sign-out',
     },
+    footer: 'app.footer',
+    /** The <ul> of services rendered from /sitemap.json (absent while loading). */
+    footerServices: 'app.footer.services',
+    footerGithub: 'app.footer.github',
+    footerCopyright: 'app.footer.copyright',
+    /** The bottom line's links: the design system, then terms and privacy. */
+    footerLegal: 'app.footer.legal',
   },
   todos: {
     page: 'todos.page',

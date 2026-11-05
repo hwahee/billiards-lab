@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 
 import { VERSION_HEADER } from '@shared/api/version';
+import type { Sitemap } from '@shared/domain/sitemap';
 import type { Todo } from '@shared/domain/todo';
 import type { User } from '@shared/domain/user';
 
@@ -265,6 +266,20 @@ describe('CORS', () => {
       headers: { origin: 'https://evil.example.com' },
     });
     expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('sitemap', () => {
+  test('serves the service directory from public/sitemap.json', async () => {
+    const { status, body, headers } = await api<Sitemap>('GET', '/sitemap.json');
+    expect(status).toBe(200);
+    expect(headers.get('cache-control')).toContain('max-age');
+    // The shipped file is sample data — assert the shape, not its entries.
+    expect(Array.isArray(body.services)).toBe(true);
+    for (const service of body.services) {
+      expect(service.name.length).toBeGreaterThan(0);
+      expect(service.url).toMatch(/^(https?:\/\/|\/)/);
+    }
   });
 });
 

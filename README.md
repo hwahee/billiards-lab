@@ -31,6 +31,9 @@ src/
     ├── theme/ i18n/ # 테마·로케일 컨텍스트
     ├── testing/     # data-testid 레지스트리 (docs/ui-automation.md 참고)
     └── pages/       # Home(Todos + 채팅), Design System, 로그인 실패, NotFound
+
+public/             # 런타임에 디스크에서 읽는 정적 데이터 (번들되지 않음)
+└── sitemap.json    # 서비스 디렉터리 — 푸터의 "Other Services" 컬럼 소스
 ```
 
 ## 요구 사항
@@ -265,10 +268,38 @@ SIGTERM/SIGINT 수신 시: ① readiness가 즉시 503으로 바뀌어 LB가 트
   (`/api/*`는 제외 — 없는 API 경로는 JSON 404).
 - **디자인 시스템**: 토큰 3계층(원시 → 디자인 치수 → 시맨틱 컬러)으로 구성되며
   `/design-system` 페이지에서 전부 확인할 수 있습니다. `<html>`의 `data-theme`
-  (light/dark)와 `data-design`(A=심미성/B=시인성) 속성만으로 전환됩니다 — 헤더의 토글
+  (light/dark)와 `data-design`(A=심미성/B=시인성) 속성만으로 전환됩니다 — 푸터의 토글
   버튼으로 즉시 스위칭됩니다. 아이콘은 lucide-react. 색상 입력(`Palette`)은 Popover API
   top layer에 떠서 어떤 `overflow` 조상 안에서도 잘리지 않으며, 값은 알파를 포함한 정규화
   hex 문자열입니다 — 설계 근거는 **[docs/palette-design.md](docs/palette-design.md)** 참고.
+- **공용 푸터**(`src/client/ui/footer.tsx`): 세 밴드 구조입니다 —
+  ① **정체성 행**(서비스명 · 태그라인 + 테마/디자인/언어 컨트롤)을 자체 hairline으로 닫고,
+  ② 그 아래 **링크 컬럼**(관련 서비스 / 연결)을 행의 좌우 끝으로 벌려 위쪽 컨트롤과 세로로
+  맞추고, ③ 마지막에 **미니멀 1줄**(저작권 · 디자인 시스템 · 약관 링크)을 둡니다. 헤더에는
+  내비게이션이 없어서 홈은 헤더의 서비스명이 링크하고, 이 서비스의 참고 페이지(디자인 시스템)는
+  서비스가 아니라 사이트 정보라 "관련 서비스"가 아닌 하단 줄에 둡니다 — 사이드바가 생기면 그리로
+  옮길 자리입니다. 본문과는 얇은
+  `border-top` 하나로 구분되며, 푸터 안의 규칙선은 정체성 행을 닫는 것 하나뿐입니다 —
+  선을 더 그으면 조용한 블록이 상자 더미가 됩니다. 좁은 화면에서는 좌우로 벌리는 대신
+  컬럼이 세로로 쌓입니다(휴대폰 폭의 양 끝은 서로 무관해 보일 만큼 멉니다). 배치는 **sticky footer**(fixed 아님) — 앱 셸이 `min-height: 100dvh` 세로
+  플렉스 컬럼이고 `<main>`이 `flex: 1 0 auto`로 남는 공간을 전부 먹습니다. 내용이 짧으면
+  푸터가 화면 맨 아래에 붙고, 길면 스크롤해야 보이는 문서 맨 끝에 놓입니다 — 어느 쪽이든
+  뷰포트에 고정되어 본문을 가리는 일은 없습니다. 톤은 본문보다 한 단계 낮게 — `--font-size-sm`(디자인 A 기준 13px),
+  `--color-text-muted`, 링크는 hover에서 밑줄만 붙습니다. 하드코딩된 12~13px 대신 토큰을
+  쓰기 때문에 시인성 디자인(B)·스킨에서도 각자의 스케일을 유지합니다.
+  "Other Services" 컬럼은 `GET /sitemap.json`(→ `public/sitemap.json`)을 그대로 렌더링하므로
+  **서비스 추가는 코드 수정이 아니라 데이터 편집**입니다. 파일은 요청마다 디스크에서 읽히니
+  재빌드·재시작도 필요 없습니다(브라우저 캐시 5분). 목록이 로딩 중이거나 실패하면 컬럼을
+  비운 채로만 렌더링합니다 — 스크롤 하단 크롬에 스피너나 에러 배너를 띄우지 않습니다.
+  링크 URL은 절대 http(s)이거나 루트 상대 경로만 허용되며(`@shared/domain/sitemap`),
+  검증에 실패한 파일은 500으로 거절됩니다 — 깨진 링크를 배포하느니 눈에 띄게 실패합니다.
+  크롤러용 `sitemap.xml`과는 무관한 별개의 문서입니다.
+- **푸터 on/off는 라우트 단위**: 크롬은 react-router의 layout route로 표현됩니다
+  (`app.tsx`의 `AppLayout` / `AppRoutes`). 기본값은 `footer = true`라 새 라우트는 가만히
+  두면 푸터를 갖고, 뷰포트 전체를 쓰는 페이지(전체화면 에디터·임베드 위젯 등)만
+  `<Route element={<AppLayout footer={false} />}>` 그룹에 넣어 예외를 **선언**합니다.
+  라우트는 소스 순서가 아니라 구체성으로 랭킹되므로 `*` 폴백이 다른 그룹의 구체적 경로를
+  가리지 않습니다.
 - **UI 자동화 / 접근성**: 모든 인터랙티브 컴포넌트는 `testId`가 **필수 prop**이며 값은
   `src/client/testing/testids.ts` 레지스트리에서만 나옵니다. WAI-ARIA(라벨, live region,
   `aria-busy`, `aria-current`, skip link, 네이티브 컨트롤 우선)를 준수합니다.

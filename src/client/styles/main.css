@@ -128,10 +128,19 @@ a {
 }
 
 /* ── App shell ────────────────────────────────────────────────────────────── */
+/* Sticky footer, not a fixed one: the shell is a full-viewport-height column
+   and <main> takes every pixel the header and footer leave over. A short page
+   therefore ends with the footer at the bottom edge instead of a slab of empty
+   background below it, while a long page pushes the footer past the fold where
+   it can only be reached by scrolling. */
 .app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh; /* fallback for browsers without dynamic viewport units */
+  min-height: 100dvh; /* excludes mobile browser chrome, which 100vh does not */
   max-width: 60rem;
   margin: 0 auto;
-  padding: var(--space-4) var(--space-4) var(--space-7);
+  padding: var(--space-4) var(--space-4) var(--space-5);
 }
 
 .app-header {
@@ -152,27 +161,20 @@ a {
   font-size: var(--font-size-lg);
 }
 
+/* The service name doubles as the home link; it should still read as a
+   title, so it keeps the heading's color and shows a link only on hover. */
+.app-header__title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-header__title a:hover {
+  text-decoration: underline;
+}
+
 .app-header__tagline {
   margin: 0;
   font-size: var(--font-size-sm);
-}
-
-.app-nav {
-  display: flex;
-  gap: var(--space-3);
-}
-
-.app-nav a {
-  text-decoration: none;
-  color: var(--color-text-muted);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-control);
-}
-
-.app-nav a[aria-current='page'] {
-  color: var(--color-primary);
-  font-weight: 700;
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .app-controls {
@@ -197,7 +199,10 @@ a {
   font-size: var(--font-size-sm);
 }
 
+/* `1 0 auto` rather than `flex: 1`: the basis stays at the content's natural
+   height, so tall pages are never asked to shrink into the viewport. */
 .app-main {
+  flex: 1 0 auto;
   padding-top: var(--space-5);
 }
 
@@ -211,6 +216,134 @@ a {
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-block: var(--space-4);
+}
+
+/* ── Footer (identity row · link columns · minimal bottom line) ───────────── */
+/* Tone: one step quieter than the body — small type, muted color, links that
+   only underline on hover. It sizes with --font-size-sm rather than a hard
+   12–13px so the high-visibility and skin designs keep their own scale
+   (13px in design A, the default). */
+/* Spacing rule: every gap INSIDE the footer is clearly smaller than the gap
+   that sets the footer apart from the page. When the two are close, the inner
+   divider reads as a second footer edge and the block looks like two footers
+   stacked. Small type also earns a tighter line-height than body copy. */
+.app-footer {
+  margin-top: var(--space-7);
+  padding-top: var(--space-4);
+  border-top: var(--border-width) solid var(--color-border);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* The top band: identity on the left, preference switches on the right,
+   closed with a hairline so the service name does not read as another link
+   column. The hairline is a subdivision, not an edge — lighter than the
+   footer's own border and with tight space on both sides. */
+.app-footer__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-width) solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  margin-bottom: var(--space-3);
+}
+
+/* Link columns sit at opposite edges of the row, which lines the last column
+   up under the preference switches above and leaves no dead half. */
+.app-footer__columns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.app-footer__column {
+  min-width: 9rem;
+}
+
+.app-footer__brand {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.app-footer__tagline {
+  margin: var(--space-1) 0 0;
+}
+
+.app-footer__heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.app-footer__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Links inherit the footer's muted color instead of the primary accent —
+   restraint is the point; hover adds an underline and nothing else. */
+.app-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  text-decoration: underline;
+}
+
+.app-footer a[aria-current='page'] {
+  color: var(--color-text);
+}
+
+.app-footer__link-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.app-footer__icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
+/* Spacing alone sets the last line apart. The footer has exactly two rules —
+   the one dividing it from the page body and the one closing the identity
+   row — and a third would turn a quiet block into a stack of boxes. */
+.app-footer__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-4);
+}
+
+/* Three links now (design system, terms, privacy) — let them wrap on a phone
+   rather than push the line past the edge. */
+.app-footer__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+}
+
+/* Opposite edges of a phone screen are far enough apart to read as unrelated,
+   so the columns stack instead of spreading. */
+@media (max-width: 40rem) {
+  .app-footer__columns {
+    flex-direction: column;
+    gap: var(--space-4);
+  }
 }
 
 /* ── Button ───────────────────────────────────────────────────────────────── */
@@ -1369,16 +1502,6 @@ dialog.overlay[data-variant='sidebar'] .overlay__panel {
   border-radius: 1px;
 }
 
-/* ── Menu-bar style navigation ─────────────────────────────────────────────*/
-[data-design='office'] .app-nav a {
-  border-radius: 0;
-}
-
-[data-design='office'] .app-nav a:hover {
-  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-  outline: 1px solid var(--color-primary);
-}
-
 /* ── Panels: raised group-box bevel; badges go square ──────────────────────*/
 [data-design='office'] .card {
   border-color: var(--office-bevel-light) var(--office-bevel-dark) var(--office-bevel-dark)
@@ -1494,7 +1617,6 @@ dialog.overlay[data-variant='sidebar'] .overlay__panel {
      springy easing so every state change overshoots and settles. */
   [data-design='kids'] .btn,
   [data-design='kids'] .field__input,
-  [data-design='kids'] .app-nav a,
   [data-design='kids'] .todo-item,
   [data-design='kids'] .card,
   [data-design='kids'] .badge,
@@ -1529,12 +1651,6 @@ dialog.overlay[data-variant='sidebar'] .overlay__panel {
   [data-design='kids'] .palette__trigger:not(:disabled):hover {
     transform: translateY(var(--hover-lift)) scale(var(--hover-scale)) rotate(var(--hover-rotate));
     box-shadow: 0 9px 0 rgb(0 0 0 / 18%);
-  }
-
-  /* Nav links do a happy wiggle. */
-  [data-design='kids'] .app-nav a:hover {
-    transform: scale(1.12) rotate(-4deg);
-    color: var(--color-primary);
   }
 
   /* Text inputs pop and get a fat colourful glow when focused. */

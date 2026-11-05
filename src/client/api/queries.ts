@@ -10,7 +10,7 @@ import type { Todo, TodoStatus } from '@shared/domain/todo';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { authApi, todosApi, type TodoListQueryInput } from './endpoints';
+import { authApi, sitemapApi, todosApi, type TodoListQueryInput } from './endpoints';
 import { ApiRequestError } from './http';
 
 const todoKeys = {
@@ -121,4 +121,17 @@ export function useTodoLiveUpdates(): void {
     };
     return () => socket.close();
   }, [queryClient]);
+}
+
+/**
+ * Service directory for the footer. It is a deploy-time-ish document, so it
+ * is fetched once and kept fresh for the session rather than re-validated on
+ * every mount; failures stay silent (the footer degrades to no column).
+ */
+export function useSitemap() {
+  return useQuery({
+    queryKey: ['sitemap'] as const,
+    queryFn: () => sitemapApi.get(),
+    staleTime: 5 * 60_000,
+  });
 }

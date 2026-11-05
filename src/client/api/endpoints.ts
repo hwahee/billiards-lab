@@ -23,6 +23,7 @@ import type {
   ChatMessage,
   SendChatMessageInput,
 } from '@shared/domain/chat';
+import type { Sitemap } from '@shared/domain/sitemap';
 import type { CreateTodoInput, Todo, TodoListQuery, UpdateTodoInput } from '@shared/domain/todo';
 import type { User } from '@shared/domain/user';
 
@@ -175,5 +176,21 @@ export const chatApi = {
       method: 'POST',
       body: input,
     });
+  },
+};
+
+export const sitemapApi = {
+  /**
+   * `GET /sitemap.json`
+   *
+   * The service directory rendered by the footer's "Other Services" column.
+   * Served straight from `public/sitemap.json`, so the list changes with a
+   * data edit — no client code involved.
+   * - Errors: 404 `NOT_FOUND` when the file is absent (the footer then just
+   *   renders without that column).
+   * - Returns: `Sitemap` — `{ services: [{ name, url, description? }] }`
+   */
+  get(): Promise<Sitemap> {
+    return apiFetch('/sitemap.json');
   },
 };

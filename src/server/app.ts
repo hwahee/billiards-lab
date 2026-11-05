@@ -11,6 +11,7 @@ import { apiFallbackRoutes } from './routes/api-fallback';
 import { authRoutes } from './routes/auth';
 import { chatMessageRoutes } from './routes/chat';
 import { livenessRoute, readinessRoute, type AppState } from './routes/health';
+import { sitemapRoute } from './routes/sitemap';
 import { todoCollectionRoutes, todoItemRoutes } from './routes/todos';
 
 /** Server-side WebSocket topic that todo change events are published to. */
@@ -38,6 +39,12 @@ export function buildApp(container: Container, state: AppState) {
       ...(container.config.authDriver === 'oidc' ? authRoutes(container, deps) : {}),
       /** Unknown API paths/methods → JSON 404, never the SPA's index.html. */
       '/api/*': apiFallbackRoutes(deps),
+      /**
+       * Public service directory (NOT the crawler's sitemap.xml). Lives
+       * outside /api because it is a static, cacheable document rather than
+       * part of the application API.
+       */
+      '/sitemap.json': sitemapRoute(deps),
       /** WebSocket endpoint: pushes `{action, todoId}` on every todo change. */
       '/ws': (req: Bun.BunRequest<'/ws'>, server: Bun.Server<SocketData>) =>
         server.upgrade(req, { data: { kind: 'todos' } })
