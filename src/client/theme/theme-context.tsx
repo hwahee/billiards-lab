@@ -17,12 +17,18 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 export type { Design, Theme };
 
+/** The design a toggle click moves to next — cycles A → B → Office → Kids → A. */
+const NEXT_DESIGN: Record<Design, Design> = { a: 'b', b: 'office', office: 'kids', kids: 'a' };
+
+export function nextDesign(current: Design): Design {
+  return NEXT_DESIGN[current];
+}
+
 interface ThemeContextValue {
   theme: Theme;
   design: Design;
   toggleTheme: () => void;
-  /** Picks a design directly — every variant has its own toggle, so there is no cycling. */
-  setDesign: (design: Design) => void;
+  toggleDesign: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -61,8 +67,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         theme,
         design,
         toggleTheme: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')),
-        // useState's setter is already stable, so it crosses the context as-is.
-        setDesign,
+        toggleDesign: () => setDesign(nextDesign),
       }}
     >
       {children}

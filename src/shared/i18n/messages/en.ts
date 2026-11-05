@@ -23,7 +23,6 @@ export const en = {
   'common.nextPage': 'Next page',
   'common.theme.light': 'Switch to light theme',
   'common.theme.dark': 'Switch to dark theme',
-  'common.design': 'Design',
   'common.design.a': 'Design A (aesthetic)',
   'common.design.b': 'Design B (high visibility)',
   'common.design.office': 'Office skin (classic desktop)',

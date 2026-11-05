@@ -26,7 +26,6 @@
 | `aria-busy="true"` (목록/버튼)      | 백그라운드 refetch / mutation 진행 중       |
 | `aria-live="polite"` 페이지 표시    | 페이지네이션 상태 갱신                      |
 | `aria-current="page"` (nav 링크)    | 활성 라우트                                 |
-| `aria-pressed="true"` (디자인 토글) | 현재 디자인                                 |
 | `aria-invalid` + `aria-describedby` | 폼 필드 검증 오류                           |
 | `aria-expanded` (아코디언 trigger)  | 패널 열림/닫힘 (`Accordion`)                |
 | `aria-expanded` (팔레트 trigger)    | 팔레트 팝업 열림/닫힘 (`Palette`)           |
@@ -37,8 +36,7 @@
 `<html>` 속성으로 관찰·제어 가능합니다:
 
 - `data-theme="light|dark"` — 토글 버튼: `app.controls.theme-toggle`
-- `data-design="a|b|office|kids"` — 디자인마다 토글 하나(`app.controls.design-toggle.<design>`), 눌린 것은
-  `aria-pressed="true"`. 묶음 전체는 `app.controls.design-toggle`
+- `data-design="a|b"` — 토글 버튼: `app.controls.design-toggle`
 - `lang="en|ko"` — 셀렉트: `app.controls.locale-select`
 
 셋 다 `localStorage`(`app.theme` / `app.design` / `app.locale`)에 저장되므로 테스트
@@ -117,12 +115,8 @@ test('creates a todo', async ({ page }) => {
 
 test('switches to high-visibility design', async ({ page }) => {
   await page.goto('/design-system');
-  await page.getByTestId(TESTID.app.designOption('b')).click();
+  await page.getByTestId(TESTID.app.designToggle).click();
   await expect(page.locator('html')).toHaveAttribute('data-design', 'b');
-  await expect(page.getByTestId(TESTID.app.designOption('b'))).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
 });
 ```
 
