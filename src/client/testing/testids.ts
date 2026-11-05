@@ -17,7 +17,9 @@ export const TESTID = {
     /** Kept from the old header nav; the link now sits in the footer's bottom line. */
     navDesignSystem: 'app.nav.design-system',
     themeToggle: 'app.controls.theme-toggle',
+    /** The group of design toggles; each design's own toggle is `designOption(design)`. */
     designToggle: 'app.controls.design-toggle',
+    designOption: (design: string) => `app.controls.design-toggle.${design}`,
     localeSelect: 'app.controls.locale-select',
     account: {
       signIn: 'app.account.sign-in',

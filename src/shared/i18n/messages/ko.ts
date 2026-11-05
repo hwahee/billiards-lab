@@ -19,6 +19,7 @@ export const ko: Record<MessageKey, string> = {
   'common.nextPage': '다음 페이지',
   'common.theme.light': '라이트 테마로 전환',
   'common.theme.dark': '다크 테마로 전환',
+  'common.design': '디자인',
   'common.design.a': '디자인 A (심미성)',
   'common.design.b': '디자인 B (시인성)',
   'common.design.office': '오피스 스킨 (클래식 데스크톱)',

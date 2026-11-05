@@ -17,7 +17,8 @@
 import { isLocale, type Locale } from '../i18n';
 
 const THEMES = ['light', 'dark'] as const;
-const DESIGNS = ['a', 'b', 'office', 'kids'] as const;
+/** In display order — the footer's design toggles render one per entry. */
+export const DESIGNS = ['a', 'b', 'office', 'kids'] as const;
 
 export type Theme = (typeof THEMES)[number];
 export type Design = (typeof DESIGNS)[number];

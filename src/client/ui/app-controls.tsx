@@ -6,20 +6,25 @@
  */
 import { Moon, Palette, Sun } from 'lucide-react';
 
+import { DESIGNS } from '@shared/domain/appearance';
 import { SUPPORTED_LOCALES, type Locale } from '@shared/i18n';
 
 import { useI18n } from '../i18n/locale-context';
 import { TESTID } from '../testing/testids';
-import { nextDesign, useTheme, type Design } from '../theme/theme-context';
+import { useTheme, type Design } from '../theme/theme-context';
 import { Button } from './button';
 import { Select } from './select';
 
 const LOCALE_LABELS: Record<Locale, string> = { en: 'English', ko: '한국어' };
 
-/** Short label shown on the design toggle button. */
+/** The visible label of each design's toggle — also its accessible name. */
 const DESIGN_BADGES: Record<Design, string> = { a: 'A', b: 'B', office: 'Office', kids: 'Kids' };
 
-/** i18n key describing each design, for the toggle's aria-label. */
+/**
+ * i18n key describing each design, shown as the toggle's tooltip (and read as
+ * its description). Not the accessible name: "오피스 스킨" would not contain
+ * the visible "Office", and speech users say what they see.
+ */
 const DESIGN_LABEL_KEYS = {
   a: 'common.design.a',
   b: 'common.design.b',
@@ -29,7 +34,7 @@ const DESIGN_LABEL_KEYS = {
 
 export function AppControls() {
   const { t, locale, setLocale } = useI18n();
-  const { theme, design, toggleTheme, toggleDesign } = useTheme();
+  const { theme, design, toggleTheme, setDesign } = useTheme();
 
   return (
     <div className="app-controls">
@@ -41,15 +46,28 @@ export function AppControls() {
       >
         {theme === 'light' ? <Moon aria-hidden size="1em" /> : <Sun aria-hidden size="1em" />}
       </Button>
-      <Button
-        variant="ghost"
-        onClick={toggleDesign}
-        aria-label={t(DESIGN_LABEL_KEYS[nextDesign(design)])}
-        testId={TESTID.app.designToggle}
+      {/* One toggle per design, exactly one pressed: every variant is a single
+          click away and all four names stay in view. */}
+      <div
+        className="design-toggle"
+        role="group"
+        aria-label={t('common.design')}
+        data-testid={TESTID.app.designToggle}
       >
-        <Palette aria-hidden size="1em" />
-        {DESIGN_BADGES[design]}
-      </Button>
+        <Palette className="design-toggle__icon" aria-hidden size="1em" />
+        {DESIGNS.map((option) => (
+          <Button
+            key={option}
+            variant="ghost"
+            aria-pressed={option === design}
+            title={t(DESIGN_LABEL_KEYS[option])}
+            onClick={() => setDesign(option)}
+            testId={TESTID.app.designOption(option)}
+          >
+            {DESIGN_BADGES[option]}
+          </Button>
+        ))}
+      </div>
       <Select<Locale>
         label={t('common.language')}
         hideLabel

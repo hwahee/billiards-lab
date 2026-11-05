@@ -407,6 +407,32 @@ a {
   background: var(--color-surface-raised);
 }
 
+/* Design toggles (src/client/ui/app-controls.tsx): a tight row of ghost
+   buttons, the pressed one tinted like an active tab. Weight stays put —
+   bolding the pressed label would change its width and shift the row on
+   every press. Defined after .btn--ghost so a hovered pressed toggle still
+   reads as pressed. */
+.design-toggle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.design-toggle__icon {
+  margin-right: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.design-toggle .btn {
+  padding-inline: var(--space-2);
+}
+
+.design-toggle .btn[aria-pressed='true'] {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
 /* ── Form fields ──────────────────────────────────────────────────────────── */
 .field {
   display: flex;
@@ -1490,6 +1516,14 @@ dialog.overlay[data-variant='sidebar'] .overlay__panel {
   border-color: var(--office-bevel-dark) var(--office-bevel-light) var(--office-bevel-light)
     var(--office-bevel-dark);
   transform: translate(1px, 1px);
+}
+
+/* A pressed toolbar toggle of the era: it stays sunken, on a flat face. */
+[data-design='office'] .design-toggle .btn[aria-pressed='true'] {
+  border-color: var(--office-bevel-dark) var(--office-bevel-light) var(--office-bevel-light)
+    var(--office-bevel-dark);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 /* ── Sunken inputs / selects (both use .field__input) ──────────────────────*/
