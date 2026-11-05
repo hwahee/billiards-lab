@@ -5,7 +5,7 @@
  *   data-theme:  'light' | 'dark'     — color scheme
  *   data-design: 'standard' | 'contrast' | 'office' | 'kids' — design variant:
  *       Standard      = the default (refined spacing, softer contrast)
- *       Contrast = standard's shape with high-contrast colors
+ *       Contrast      = standard's shape with high-contrast colors
  *       Office        = 2000s MS Office (dense, beveled controls, no motion)
  *       Kids          = playground/toy vibe (chunky, rounded, exaggerated motion)
  *
