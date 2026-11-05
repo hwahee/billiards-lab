@@ -19,8 +19,8 @@ export const ko: Record<MessageKey, string> = {
   'common.nextPage': '다음 페이지',
   'common.theme.light': '라이트 테마로 전환',
   'common.theme.dark': '다크 테마로 전환',
-  'common.design.a': '디자인 A (심미성)',
-  'common.design.b': '디자인 B (시인성)',
+  'common.design.standard': '기본 스킨',
+  'common.design.contrast': '고대비 스킨 (시인성)',
   'common.design.office': '오피스 스킨 (클래식 데스크톱)',
   'common.design.kids': '어린이 스킨 (놀이터)',
   'common.language': '언어',
@@ -78,7 +78,7 @@ export const ko: Record<MessageKey, string> = {
 
   'designSystem.title': '디자인 시스템',
   'designSystem.description':
-    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 푸터의 컨트롤로 테마(라이트/다크), 디자인(A / B / 오피스 / 어린이), 언어를 전환해 보세요.',
+    '모든 토큰과 컴포넌트를 한곳에서 확인합니다. 푸터의 컨트롤로 테마(라이트/다크), 디자인(기본 / 고대비 / 오피스 / 어린이), 언어를 전환해 보세요.',
   'designSystem.colors': '컬러 토큰',
   'designSystem.typography': '타이포그래피',
   'designSystem.buttons': '버튼',

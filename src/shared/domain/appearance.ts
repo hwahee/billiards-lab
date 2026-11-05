@@ -9,7 +9,7 @@
  * `/api/auth/login` carries the same names, so one parser serves both hops:
  *
  *   theme=light|dark
- *   design=a|b|office|kids
+ *   design=standard|contrast|office|kids  (also the old a|b, see below)
  *   ui_locales=ko en   — the first one we speak wins
  *
  * Anything missing or unknown is left out.
@@ -17,10 +17,20 @@
 import { isLocale, type Locale } from '../i18n';
 
 const THEMES = ['light', 'dark'] as const;
-const DESIGNS = ['a', 'b', 'office', 'kids'] as const;
+const DESIGNS = ['standard', 'contrast', 'office', 'kids'] as const;
 
 export type Theme = (typeof THEMES)[number];
 export type Design = (typeof DESIGNS)[number];
+
+/**
+ * What the first two designs were called before they were renamed (A, B).
+ * Links from a service that hasn't taken the rename yet, and choices saved in
+ * a browser before it, still carry these.
+ */
+const RENAMED_DESIGNS = new Map<string, Design>([
+  ['a', 'standard'],
+  ['b', 'contrast'],
+]);
 
 export interface Appearance {
   theme?: Theme;
@@ -32,9 +42,14 @@ function oneOf<T extends string>(options: readonly T[], value: string | null): T
   return options.find((option) => option === value);
 }
 
+/** The design a stored or passed-along value names, old names included. */
+export function designFrom(value: string | null): Design | undefined {
+  return oneOf(DESIGNS, value) ?? RENAMED_DESIGNS.get(value ?? '');
+}
+
 export function appearanceFromParams(params: URLSearchParams): Appearance {
   const theme = oneOf(THEMES, params.get('theme'));
-  const design = oneOf(DESIGNS, params.get('design'));
+  const design = designFrom(params.get('design'));
   const locale = (params.get('ui_locales') ?? '')
     .split(' ')
     .map((tag) => tag.split('-')[0]?.toLowerCase())

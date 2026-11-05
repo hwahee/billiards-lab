@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { appearanceFromParams, appearanceParams } from './appearance';
+import { appearanceFromParams, appearanceParams, designFrom } from './appearance';
 
 describe('appearance', () => {
   test('reads theme, design and the first spoken ui_locales tag', () => {
@@ -16,6 +16,17 @@ describe('appearance', () => {
     const params = new URLSearchParams({ theme: 'sepia', design: 'office', ui_locales: 'fr' });
     expect(appearanceFromParams(params)).toEqual({ design: 'office' });
     expect(appearanceFromParams(new URLSearchParams())).toEqual({});
+  });
+
+  test('reads the old design names as the new ones', () => {
+    expect(designFrom('a')).toBe('standard');
+    expect(designFrom('b')).toBe('contrast');
+    expect(designFrom('contrast')).toBe('contrast');
+    expect(designFrom('constructor')).toBeUndefined();
+    expect(designFrom(null)).toBeUndefined();
+    expect(appearanceFromParams(new URLSearchParams({ design: 'b' }))).toEqual({
+      design: 'contrast',
+    });
   });
 
   test('writes the same parameters it reads', () => {

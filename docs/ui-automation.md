@@ -36,7 +36,7 @@
 `<html>` 속성으로 관찰·제어 가능합니다:
 
 - `data-theme="light|dark"` — 토글 버튼: `app.controls.theme-toggle`
-- `data-design="a|b"` — 토글 버튼: `app.controls.design-toggle`
+- `data-design="standard|contrast|office|kids"` — 토글 버튼: `app.controls.design-toggle`
 - `lang="en|ko"` — 셀렉트: `app.controls.locale-select`
 
 셋 다 `localStorage`(`app.theme` / `app.design` / `app.locale`)에 저장되므로 테스트
@@ -113,10 +113,10 @@ test('creates a todo', async ({ page }) => {
   await expect(page.getByTestId(TESTID.todos.list)).toContainText('Write e2e tests');
 });
 
-test('switches to high-visibility design', async ({ page }) => {
+test('switches to the contrast skin', async ({ page }) => {
   await page.goto('/design-system');
   await page.getByTestId(TESTID.app.designToggle).click();
-  await expect(page.locator('html')).toHaveAttribute('data-design', 'b');
+  await expect(page.locator('html')).toHaveAttribute('data-design', 'contrast');
 });
 ```
 

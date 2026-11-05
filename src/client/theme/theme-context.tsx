@@ -3,22 +3,28 @@
  * and consumed purely by CSS custom properties (src/client/styles/tokens.css):
  *
  *   data-theme:  'light' | 'dark'     — color scheme
- *   data-design: 'a' | 'b' | 'office' | 'kids' — design variant:
- *       A      = aesthetic-first (refined spacing, softer contrast)
- *       B      = visibility-first (larger type, high contrast, bigger targets)
- *       Office = 2000s MS Office (dense, beveled controls, no motion)
- *       Kids  = playground/toy vibe (chunky, rounded, exaggerated motion)
+ *   data-design: 'standard' | 'contrast' | 'office' | 'kids' — design variant:
+ *       Standard      = the default (refined spacing, softer contrast)
+ *       Contrast      = standard's shape with high-contrast colors
+ *       Office        = 2000s MS Office (dense, beveled controls, no motion)
+ *       Kids          = playground/toy vibe (chunky, rounded, exaggerated motion)
  *
- * Both persist to localStorage. The initial theme derives from the OS
+ * Both persist to localStorage; a design saved under its old name (a, b) is
+ * read as the new one and saved back under it. The initial theme derives from the OS
  * preference — computed once, not stored as extra state.
  */
-import type { Design, Theme } from '@shared/domain/appearance';
+import { designFrom, type Design, type Theme } from '@shared/domain/appearance';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 export type { Design, Theme };
 
-/** The design a toggle click moves to next — cycles A → B → Office → Kids → A. */
-const NEXT_DESIGN: Record<Design, Design> = { a: 'b', b: 'office', office: 'kids', kids: 'a' };
+/** The design a toggle click moves to next — cycles Standard → Contrast → Office → Kids → Standard. */
+const NEXT_DESIGN: Record<Design, Design> = {
+  standard: 'contrast',
+  contrast: 'office',
+  office: 'kids',
+  kids: 'standard',
+};
 
 export function nextDesign(current: Design): Design {
   return NEXT_DESIGN[current];
@@ -43,8 +49,7 @@ function initialTheme(): Theme {
 }
 
 function initialDesign(): Design {
-  const stored = localStorage.getItem(DESIGN_KEY);
-  return stored === 'b' || stored === 'office' || stored === 'kids' ? stored : 'a';
+  return designFrom(localStorage.getItem(DESIGN_KEY)) ?? 'standard';
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

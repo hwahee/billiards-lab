@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-design="a">
+<html lang="en" data-theme="light" data-design="standard">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -15,9 +15,12 @@
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         root.dataset.theme = theme;
+        // Old names (a, b) as in appearance.ts designFrom().
         var design = localStorage.getItem('app.design');
+        if (design === 'a') design = 'standard';
+        if (design === 'b') design = 'contrast';
         root.dataset.design =
-          design === 'b' || design === 'office' || design === 'kids' ? design : 'a';
+          design === 'contrast' || design === 'office' || design === 'kids' ? design : 'standard';
         var locale = localStorage.getItem('app.locale');
         if (locale === 'en' || locale === 'ko') root.lang = locale;
       } catch (_) {

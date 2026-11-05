@@ -221,8 +221,8 @@ a {
 /* ── Footer (identity row · link columns · minimal bottom line) ───────────── */
 /* Tone: one step quieter than the body — small type, muted color, links that
    only underline on hover. It sizes with --font-size-sm rather than a hard
-   12–13px so the high-visibility and skin designs keep their own scale
-   (13px in design A, the default). */
+   12–13px so every skin keeps its own scale (13px in the standard skin,
+   the default). */
 /* Spacing rule: every gap INSIDE the footer is clearly smaller than the gap
    that sets the footer apart from the page. When the two are close, the inner
    divider reads as a second footer edge and the block looks like two footers
@@ -1432,7 +1432,7 @@ dialog.overlay[data-variant='sidebar'] .overlay__panel {
 /* ============================================================================
  * OFFICE SKIN — 2000s–2010s MS Office / Win32 look.
  *
- * Scoped to [data-design='office'] so designs A and B are untouched. The
+ * Scoped to [data-design='office'] so the other skins are untouched. The
  * signature of the era is the 3D bevel: buttons look raised (light top/left,
  * dark bottom/right) and press *in* on :active; inputs look sunken (the
  * inverse bevel). Everything is dense, square-cornered and — deliberately —
@@ -1577,7 +1577,7 @@ dialog.overlay[data-variant='sidebar'] .overlay__panel {
 /* ============================================================================
  * KIDS SKIN — exaggerated, playful interactions.
  *
- * Everything here is scoped to [data-design='kids'], so designs A and B are
+ * Everything here is scoped to [data-design='kids'], so the other skins are
  * untouched. Motion knobs (--hover-scale, --ease-interaction, …) come from the
  * kids token block; the transforms below just consume them. All transform-based
  * motion is gated behind prefers-reduced-motion so it stays accessible.
