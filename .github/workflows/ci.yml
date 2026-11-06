@@ -7,7 +7,12 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    # Pinned here only (the boilerplate uses ubuntu-latest): the physics
+    # golden fixture (src/shared/billiards/__fixtures__/golden-steps.json)
+    # replays bit-exactly, and the engine's Math.sin/Math.cos go through the
+    # system glibc libm. ubuntu-26.04's newer glibc moves their last bit, so
+    # the fixture only replays on the image it was recorded against.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

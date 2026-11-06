@@ -1,0 +1,15 @@
+{
+  "updatedAt": "2026-08-25",
+  "services": [
+    {
+      "name": "Boilerplate",
+      "url": "https://github.com/hwahee/boilerplate",
+      "description": "React + Bun fullstack starter"
+    },
+    {
+      "name": "Example Service",
+      "url": "https://example.hwahee.com",
+      "description": "Replace this entry with a real service"
+    }
+  ]
+}

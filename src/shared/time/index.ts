@@ -43,9 +43,26 @@ export function formatUtcInTimeZone(
   value: UtcIsoString,
   options: { timeZone?: string; locale?: string } = {},
 ): string {
-  return new Intl.DateTimeFormat(options.locale, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: options.timeZone,
-  }).format(parseUtcIso(value));
+  return formatterFor(options.locale, options.timeZone).format(parseUtcIso(value));
+}
+
+/**
+ * One formatter per locale + zone. Building an `Intl.DateTimeFormat` costs
+ * tens of times more than using one, and a list formats a timestamp for every
+ * row it draws.
+ */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(locale: string | undefined, timeZone: string | undefined) {
+  const key = `${locale ?? ''}|${timeZone ?? ''}`;
+  let formatter = formatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone,
+    });
+    formatters.set(key, formatter);
+  }
+  return formatter;
 }

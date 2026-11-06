@@ -22,6 +22,26 @@ const configValidator = toValidator(
     /** `web` = HTTP only, `worker` = background jobs only, `all` = both. */
     serverRole: s._default(s.enum(['web', 'worker', 'all']), 'all'),
     shutdownDrainMs: s._default(s.int().check(s.gte(0), s.lte(60_000)), 3000),
+    /**
+     * How requests sign in: `none` = no sign-in at all (/api/auth is not
+     * mounted), `oidc` = through the member server, which signs members in
+     * for every service with OpenID Connect (CLAUDE.md).
+     */
+    authDriver: s._default(s.enum(['none', 'oidc']), 'none'),
+    /** Present exactly when AUTH_DRIVER=oidc (see .env.example). */
+    oidc: s.optional(
+      s.object({
+        /** The member server's issuer; its discovery document says the rest. */
+        issuer: s.url(),
+        /** This service's id at the member server: its subdomain, and its cookies' suffix. */
+        clientId: s.string().check(s.minLength(1), s.maxLength(63), s.regex(/^[a-z0-9-]+$/)),
+        clientSecret: s.string().check(s.minLength(1)),
+        /** Where browsers reach this service; the sign-in callback lives under it. */
+        publicUrl: s.url(),
+        /** Signs the session cookie. Long and random, and never committed. */
+        sessionSecret: s.string().check(s.minLength(32)),
+      }),
+    ),
   }),
 );
 
@@ -31,9 +51,31 @@ function numberOrUndefined(value: string | undefined): number | undefined {
   return value === undefined || value === '' ? undefined : Number(value);
 }
 
+/** What AUTH_DRIVER=oidc needs; values must match this service's entry on the member server. */
+const OIDC_ENV = [
+  'OIDC_ISSUER',
+  'OIDC_CLIENT_ID',
+  'OIDC_CLIENT_SECRET',
+  'PUBLIC_URL',
+  'SESSION_SECRET',
+] as const;
+
 export function loadServerConfig(
   env: Record<string, string | undefined> = process.env,
 ): ServerConfig {
+  if (env.AUTH_DRIVER === 'dev') {
+    throw new Error(
+      'AUTH_DRIVER=dev was removed: members sign in through the member server (AUTH_DRIVER=oidc). See docs/upgrade-guides/2026-10-oidc-sign-in.md',
+    );
+  }
+  const oidc = env.AUTH_DRIVER === 'oidc';
+  if (oidc) {
+    const missing = OIDC_ENV.filter((name) => !env[name]);
+    if (missing.length > 0) {
+      throw new Error(`${missing.join(', ')} required when AUTH_DRIVER=oidc`);
+    }
+  }
+
   const config = configValidator.parse({
     appEnv: env.APP_ENV,
     port: numberOrUndefined(env.PORT),
@@ -47,6 +89,16 @@ export function loadServerConfig(
     redisUrl: env.REDIS_URL,
     serverRole: env.SERVER_ROLE,
     shutdownDrainMs: numberOrUndefined(env.SHUTDOWN_DRAIN_MS),
+    authDriver: env.AUTH_DRIVER,
+    oidc: oidc
+      ? {
+          issuer: env.OIDC_ISSUER,
+          clientId: env.OIDC_CLIENT_ID,
+          clientSecret: env.OIDC_CLIENT_SECRET,
+          publicUrl: env.PUBLIC_URL,
+          sessionSecret: env.SESSION_SECRET,
+        }
+      : undefined,
   });
 
   if (config.dbDriver === 'postgres' && !config.databaseUrl) {

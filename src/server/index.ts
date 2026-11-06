@@ -9,6 +9,8 @@
  * CONTAINS the built client, so one deployable unit always ships matching
  * client and server code (see @shared/api/version for the skew handshake).
  */
+import { HOME_CHAT_ROOM } from '@shared/domain/home-chat';
+
 import homepage from '../client/index.html';
 import { bridgePubSubToWebSocket, buildApp } from './app';
 import { loadServerConfig } from './config';
@@ -30,6 +32,10 @@ const stopHooks: (() => Promise<void>)[] = [];
 if (config.serverRole === 'web' || config.serverRole === 'all') {
   const app = buildApp(container, state);
 
+  // The home page's one chat room. A feature attaching chat opens its rooms
+  // the same way (ChatService.openRoom); re-opening only refreshes the policy.
+  await container.chatService().openRoom(HOME_CHAT_ROOM);
+
   const server = Bun.serve({
     port: config.port,
     development:
@@ -40,6 +46,7 @@ if (config.serverRole === 'web' || config.serverRole === 'all') {
       ...app.routes,
       // SPA catch-all: every non-API path serves the client (index.html),
       // so client-side routes like /design-system deep-link correctly.
+      // Unknown /api/* paths never reach it — see routes/api-fallback.ts.
       '/*': homepage,
     },
     websocket: app.websocket,
@@ -48,9 +55,12 @@ if (config.serverRole === 'web' || config.serverRole === 'all') {
   // Bridge: pub/sub bus → WebSocket clients connected to THIS instance.
   // With PUBSUB_DRIVER=redis this fans out across all instances.
   const unsubscribe = await bridgePubSubToWebSocket(server, container);
+  // Chat: bus → this instance's chat sockets, plus their presence heartbeat.
+  const stopChat = await container.chatGateway().start();
 
   stopHooks.push(async () => {
     await unsubscribe();
+    await stopChat();
     // Stop accepting new connections, then wait for in-flight requests to
     // finish (graceful; `server.stop(true)` would abort them instead).
     await server.stop();

@@ -5,7 +5,8 @@
  *   - the repo-wide error envelope (@shared/api/errors), localized
  *   - deployment-version handshake (@shared/api/version)
  *   - CORS preflight + response headers
- *   - mapping of domain errors (ValidationError, NotFoundError) to HTTP
+ *   - mapping of domain errors (ValidationError, UnauthorizedError, NotFoundError)
+ *     to HTTP
  */
 import type { ApiErrorBody, ApiErrorCode } from '@shared/api/errors';
 import { APP_VERSION, VERSION_HEADER } from '@shared/api/version';
@@ -13,7 +14,7 @@ import type { MessageKey } from '@shared/i18n';
 import { ValidationError } from '@shared/validation';
 
 import type { ServerConfig } from '../config';
-import { ForbiddenError, NotFoundError } from '../lib/errors';
+import { ForbiddenError, NotFoundError, UnauthorizedError } from '../lib/errors';
 import type { Logger } from '../lib/log';
 import { createRequestContext, type RequestContext } from './context';
 import { corsHeaders, preflightResponse } from './cors';
@@ -27,6 +28,7 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
 
 const ERROR_MESSAGE_KEYS: Record<ApiErrorCode, MessageKey> = {
   VALIDATION_ERROR: 'error.validation',
+  UNAUTHORIZED: 'error.unauthorized',
   NOT_FOUND: 'error.notFound',
   FORBIDDEN: 'error.forbidden',
   VERSION_MISMATCH: 'error.versionMismatch',
@@ -73,7 +75,7 @@ export function apiRoute<P extends string>(
   const wrap =
     (handler: ApiHandler<P>) =>
     async (req: Bun.BunRequest<P>): Promise<Response> => {
-      const ctx = createRequestContext(req);
+      const ctx = createRequestContext(req, deps.config);
       let response: Response;
       try {
         response = checkVersion(req, ctx) ?? (await handler(req, ctx));
@@ -120,6 +122,9 @@ function mapError(error: unknown, ctx: RequestContext, log: Logger): Response {
     return errorResponse(400, 'VALIDATION_ERROR', ctx, [
       { path: '', message: 'Request body is not valid JSON', code: 'invalid_json' },
     ]);
+  }
+  if (error instanceof UnauthorizedError) {
+    return errorResponse(401, 'UNAUTHORIZED', ctx);
   }
   if (error instanceof NotFoundError) {
     return errorResponse(404, 'NOT_FOUND', ctx, { resource: error.resource, id: error.id });

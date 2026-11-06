@@ -1,7 +1,7 @@
 /**
  * Design System — every token and component visible in one place, in every
- * state. The header controls switch theme (light/dark), design variant
- * (A = aesthetic / B = high-visibility) and language live on this page,
+ * state. The footer controls switch theme (light/dark), design variant
+ * (standard / contrast / office / kids) and language live on this page,
  * because everything below renders exclusively from semantic CSS tokens.
  */
 import { hexColor, type HexColor } from '@shared/color';
@@ -22,6 +22,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Palette, type PaletteSwatch } from '../ui/palette';
 import { Select } from '../ui/select';
 import { Spinner } from '../ui/spinner';
+import { TextArea } from '../ui/text-area';
 import { TextField } from '../ui/text-field';
 
 /** The semantic color tokens (see src/client/styles/tokens.css). */
@@ -307,6 +308,9 @@ export function DesignSystemPage() {
           <Button loading testId="ds.button.loading">
             Loading
           </Button>
+          <Button to="/design-system" variant="secondary" testId="ds.button.link">
+            Link (to)
+          </Button>
         </div>
       </Section>
 
@@ -336,6 +340,13 @@ export function DesignSystemPage() {
             testId="ds.select"
           />
           <Checkbox label="Checkbox" checked={checked} onChange={setChecked} testId="ds.checkbox" />
+          <TextArea
+            label="Text area"
+            placeholder="Several lines of text"
+            hint="Hint line, e.g. a character count"
+            maxLength={500}
+            testId="ds.textarea"
+          />
         </div>
       </Section>
 

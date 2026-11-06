@@ -2,21 +2,49 @@
  * TanStack Query bindings for the API catalog (./endpoints.ts).
  *
  * Server state lives exclusively in the query cache — components never copy
- * it into local state. Cache keys are produced only by the `todoKeys` factory
- * so invalidation stays consistent.
+ * it into local state. Cache keys are produced only by the key factories
+ * (`todoKeys`, `authKeys`) so invalidation stays consistent.
  */
 import type { Page } from '@shared/api/pagination';
 import type { Todo, TodoStatus } from '@shared/domain/todo';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { todosApi, type TodoListQueryInput } from './endpoints';
+import { authApi, sitemapApi, todosApi, type TodoListQueryInput } from './endpoints';
+import { ApiRequestError } from './http';
 
 const todoKeys = {
   all: ['todos'] as const,
   lists: () => [...todoKeys.all, 'list'] as const,
   list: (query: TodoListQueryInput) => [...todoKeys.lists(), query] as const,
 };
+
+const authKeys = {
+  me: ['auth', 'me'] as const,
+};
+
+/**
+ * The signed-in user: `User`, or `null` when signed out. The query errors
+ * (404 `NOT_FOUND`) when the server runs without sign-in (`AUTH_DRIVER=none`).
+ */
+export function useMe() {
+  return useQuery({ queryKey: authKeys.me, queryFn: () => authApi.me() });
+}
+
+/**
+ * Who the visitor is, for deciding what the UI offers — mirrors the server's
+ * `Caller` (src/server/auth/session.ts):
+ *   - `member`  — signed in
+ *   - `guest`   — sign-in exists but the visitor is not signed in
+ *   - `anyone`  — the server runs without sign-in, so there is no split
+ *   - `unknown` — `me` is still loading, or failed for another reason
+ */
+export function useCaller(): 'member' | 'guest' | 'anyone' | 'unknown' {
+  const me = useMe();
+  if (me.isSuccess) return me.data ? 'member' : 'guest';
+  if (me.error instanceof ApiRequestError && me.error.code === 'NOT_FOUND') return 'anyone';
+  return 'unknown';
+}
 
 /** Paginated list; keeps the previous page rendered while the next one loads. */
 export function useTodoList(query: TodoListQueryInput) {
@@ -93,4 +121,17 @@ export function useTodoLiveUpdates(): void {
     };
     return () => socket.close();
   }, [queryClient]);
+}
+
+/**
+ * Service directory for the footer. It is a deploy-time-ish document, so it
+ * is fetched once and kept fresh for the session rather than re-validated on
+ * every mount; failures stay silent (the footer degrades to no column).
+ */
+export function useSitemap() {
+  return useQuery({
+    queryKey: ['sitemap'] as const,
+    queryFn: () => sitemapApi.get(),
+    staleTime: 5 * 60_000,
+  });
 }

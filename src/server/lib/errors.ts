@@ -9,6 +9,14 @@ export class NotFoundError extends Error {
   }
 }
 
+/** The operation needs a signed-in user and the request has none. */
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('authentication required');
+    this.name = 'UnauthorizedError';
+  }
+}
+
 /** The caller is known but not allowed to do this right now (e.g. not their turn). */
 export class ForbiddenError extends Error {
   constructor(readonly reason: string) {

@@ -11,11 +11,12 @@
 import { createTodoValidator, type TodoListQuery, type TodoStatus } from '@shared/domain/todo';
 import { formatUtcInTimeZone } from '@shared/time';
 import { Plus, Trash2 } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 
 import { ApiRequestError } from '../api/http';
 import {
+  useCaller,
   useCreateTodo,
   useDeleteTodo,
   useTodoLiveUpdates,
@@ -50,16 +51,14 @@ export function TodosPage() {
   const sortByParam = searchParams.get('sortBy');
   const sortBy: SortField = sortByParam === 'title' ? 'title' : 'createdAt';
 
-  const query = useMemo(
-    () => ({
-      page,
-      pageSize: PAGE_SIZE,
-      sortBy,
-      sortOrder: sortBy === 'title' ? ('asc' as const) : ('desc' as const),
-      ...(status === 'all' ? {} : { status }),
-    }),
-    [page, sortBy, status],
-  );
+  // A new object each render is fine: TanStack Query compares keys by content.
+  const query = {
+    page,
+    pageSize: PAGE_SIZE,
+    sortBy,
+    sortOrder: sortBy === 'title' ? ('asc' as const) : ('desc' as const),
+    ...(status === 'all' ? {} : { status }),
+  };
 
   const patchParams = (patch: Record<string, string | null>) => {
     setSearchParams((params) => {
@@ -72,6 +71,10 @@ export function TodosPage() {
   };
 
   const todoList = useTodoList(query);
+  // A todo outlives the visit, so only members write (guests read) — the
+  // server enforces this; the UI just doesn't offer what would be refused.
+  const caller = useCaller();
+  const canWrite = caller === 'member' || caller === 'anyone';
   const createTodo = useCreateTodo();
   const toggleStatus = useToggleTodoStatus();
   const deleteTodo = useDeleteTodo();
@@ -103,26 +106,36 @@ export function TodosPage() {
       <h2 id="todos-heading">{t('todos.title')}</h2>
       <p className="muted">{t('todos.description')}</p>
 
-      <form
-        className="todo-create"
-        onSubmit={submitCreate}
-        aria-label={t('todos.createSubmit')}
-        data-testid={TESTID.todos.createForm}
-      >
-        <TextField
-          label={t('todos.createLabel')}
-          placeholder={t('todos.createPlaceholder')}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          error={titleError}
-          maxLength={200}
-          testId={TESTID.todos.createInput}
-        />
-        <Button type="submit" loading={createTodo.isPending} testId={TESTID.todos.createSubmit}>
-          <Plus aria-hidden size="1em" />
-          {t('todos.createSubmit')}
-        </Button>
-      </form>
+      {caller === 'guest' && (
+        <div className="todo-guest-hint">
+          <Alert tone="info" testId={TESTID.todos.guestHint}>
+            {t('todos.guestHint')}
+          </Alert>
+        </div>
+      )}
+
+      {canWrite && (
+        <form
+          className="todo-create"
+          onSubmit={submitCreate}
+          aria-label={t('todos.createSubmit')}
+          data-testid={TESTID.todos.createForm}
+        >
+          <TextField
+            label={t('todos.createLabel')}
+            placeholder={t('todos.createPlaceholder')}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            error={titleError}
+            maxLength={200}
+            testId={TESTID.todos.createInput}
+          />
+          <Button type="submit" loading={createTodo.isPending} testId={TESTID.todos.createSubmit}>
+            <Plus aria-hidden size="1em" />
+            {t('todos.createSubmit')}
+          </Button>
+        </form>
+      )}
 
       <div className="todo-toolbar">
         <Select<StatusFilter>
@@ -198,6 +211,7 @@ export function TodosPage() {
                         status: t(`todos.status.${nextStatus}`),
                       })}
                       checked={todo.status === 'done'}
+                      disabled={!canWrite}
                       onChange={() => toggleStatus.mutate({ id: todo.id, status: nextStatus })}
                       testId={TESTID.todos.itemToggle(todo.id)}
                     />
@@ -208,15 +222,17 @@ export function TodosPage() {
                     <time className="muted todo-item__time" dateTime={todo.createdAt}>
                       {formatUtcInTimeZone(todo.createdAt, { locale })}
                     </time>
-                    <Button
-                      variant="ghost"
-                      aria-label={t('todos.deleteTodo', { title: todo.title })}
-                      onClick={() => deleteTodo.mutate(todo.id)}
-                      loading={deleteTodo.isPending && deleteTodo.variables === todo.id}
-                      testId={TESTID.todos.itemDelete(todo.id)}
-                    >
-                      <Trash2 aria-hidden size="1em" />
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        aria-label={t('todos.deleteTodo', { title: todo.title })}
+                        onClick={() => deleteTodo.mutate(todo.id)}
+                        loading={deleteTodo.isPending && deleteTodo.variables === todo.id}
+                        testId={TESTID.todos.itemDelete(todo.id)}
+                      >
+                        <Trash2 aria-hidden size="1em" />
+                      </Button>
+                    )}
                   </li>
                 );
               })}

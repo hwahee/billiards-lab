@@ -25,6 +25,10 @@ export const CHANNELS = {
   todosChanged: 'todos.changed',
   /** Emitted on every billiards room update; payload: BilliardsRoomSnapshot. */
   billiardsUpdated: 'billiards.updated',
+  /** Emitted after a chat message is stored; payload: ChatMessage. */
+  chatMessages: 'chat.messages',
+  /** Emitted when a connection joins or leaves a chat room; payload: the change (chat-gateway.ts). */
+  chatPresence: 'chat.presence',
   /** Background job queue consumed by worker-role processes. */
   jobs: 'jobs',
 } as const;

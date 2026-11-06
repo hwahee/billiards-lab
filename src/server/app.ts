@@ -9,14 +9,28 @@ import { wsSubscriptionValidator, type BilliardsLiveMessage } from '@shared/bill
 import type { Container } from './container';
 import type { HttpDeps } from './http/respond';
 import { CHANNELS } from './pubsub';
+import type { ChatSocketData } from './realtime/chat-gateway';
+import { apiFallbackRoutes } from './routes/api-fallback';
+import { authRoutes } from './routes/auth';
 import { billiardsRoutes } from './routes/billiards';
+import { chatMessageRoutes } from './routes/chat';
 import { livenessRoute, readinessRoute, type AppState } from './routes/health';
+import { sitemapRoute } from './routes/sitemap';
 import { todoCollectionRoutes, todoItemRoutes } from './routes/todos';
 
 /** Server-side WebSocket topic that todo change events are published to. */
 const WS_TOPIC_TODOS = 'ws.todos';
 /** Server-side WebSocket topic streaming billiards room snapshots (opt-in per socket). */
 const WS_TOPIC_BILLIARDS = 'ws.billiards';
+
+/** What each socket carries — which endpoint it was opened on decides the rest. */
+export type SocketData = { kind: 'todos' } | ChatSocketData;
+
+function isChatSocket(
+  ws: Bun.ServerWebSocket<SocketData>,
+): ws is Bun.ServerWebSocket<ChatSocketData> {
+  return ws.data.kind === 'chat';
+}
 
 export function buildApp(container: Container, state: AppState) {
   const deps: HttpDeps = { config: container.config, log: container.log };
@@ -28,22 +42,46 @@ export function buildApp(container: Container, state: AppState) {
       '/api/todos': todoCollectionRoutes(container, deps),
       '/api/todos/:id': todoItemRoutes(container, deps),
       '/api/billiards': billiardsRoutes(container, deps),
+      '/api/chat/rooms/:roomId/messages': chatMessageRoutes(container, deps),
+      ...(container.config.authDriver === 'oidc' ? authRoutes(container, deps) : {}),
+      /** Unknown API paths/methods → JSON 404, never the SPA's index.html. */
+      '/api/*': apiFallbackRoutes(deps),
+      /**
+       * Public service directory (NOT the crawler's sitemap.xml). Lives
+       * outside /api because it is a static, cacheable document rather than
+       * part of the application API.
+       */
+      '/sitemap.json': sitemapRoute(deps),
       /** WebSocket endpoint: pushes `{action, todoId}` on every todo change. */
-      '/ws': (req: Bun.BunRequest<'/ws'>, server: Bun.Server<undefined>) =>
-        server.upgrade(req)
+      '/ws': (req: Bun.BunRequest<'/ws'>, server: Bun.Server<SocketData>) =>
+        server.upgrade(req, { data: { kind: 'todos' } })
           ? undefined
           : new Response('WebSocket upgrade required', { status: 426 }),
+      /** Chat WebSocket endpoint — see src/server/realtime/chat-gateway.ts. */
+      '/ws/chat': (req: Bun.BunRequest<'/ws/chat'>, server: Bun.Server<SocketData>) => {
+        const data = container.chatGateway().handshake(req);
+        if (data instanceof Response) return data;
+        return server.upgrade(req, { data })
+          ? undefined
+          : new Response('WebSocket upgrade required', { status: 426 });
+      },
     },
 
     websocket: {
-      open(ws: Bun.ServerWebSocket<undefined>) {
-        // Every socket joins the todos topic; the pub/sub → server.publish
+      open(ws: Bun.ServerWebSocket<SocketData>) {
+        // Every todos socket joins the todos topic; the pub/sub → server.publish
         // bridge below makes this work across instances (redis driver).
-        // The billiards feed streams at ~25 Hz during a shot, so it is
-        // strictly opt-in via a subscribe message.
-        ws.subscribe(WS_TOPIC_TODOS);
+        // The billiards feed rides the same socket but streams at ~25 Hz
+        // during a shot, so it is strictly opt-in via a subscribe message.
+        // Chat sockets join rooms by asking (see the chat gateway).
+        if (ws.data.kind === 'todos') ws.subscribe(WS_TOPIC_TODOS);
       },
-      message(ws: Bun.ServerWebSocket<undefined>, raw: string | Buffer) {
+      message(ws: Bun.ServerWebSocket<SocketData>, raw: string | Buffer) {
+        if (isChatSocket(ws)) {
+          void container.chatGateway().message(ws, raw);
+          return;
+        }
+        // On a todos socket the only inbound protocol is the billiards opt-in.
         let payload: unknown;
         try {
           payload = JSON.parse(String(raw));
@@ -54,6 +92,9 @@ export function buildApp(container: Container, state: AppState) {
         if (!parsed.ok) return;
         if (parsed.value.type === 'subscribe') ws.subscribe(WS_TOPIC_BILLIARDS);
         else ws.unsubscribe(WS_TOPIC_BILLIARDS);
+      },
+      close(ws: Bun.ServerWebSocket<SocketData>) {
+        if (isChatSocket(ws)) void container.chatGateway().close(ws);
       },
     },
 
@@ -68,7 +109,7 @@ export function buildApp(container: Container, state: AppState) {
  * reaches sockets connected everywhere. Returns an unsubscribe-all cleanup.
  */
 export async function bridgePubSubToWebSocket(
-  server: Bun.Server<undefined>,
+  server: Bun.Server<SocketData>,
   container: Container,
 ): Promise<() => Promise<void>> {
   const unsubscribes = [

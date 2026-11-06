@@ -23,4 +23,15 @@ describe('time facade', () => {
     expect(seoul).toContain('Jan 1, 2026');
     expect(seoul).toContain('9:30');
   });
+
+  test('formatUtcInTimeZone keeps zones and locales apart across calls', () => {
+    const iso = toUtcIso(new Date('2026-01-01T00:30:00.000Z'));
+    const seoul = { timeZone: 'Asia/Seoul', locale: 'en-US' };
+    const utc = { timeZone: 'UTC', locale: 'en-US' };
+    expect(formatUtcInTimeZone(iso, seoul)).toContain('9:30');
+    expect(formatUtcInTimeZone(iso, utc)).toContain('12:30');
+    expect(formatUtcInTimeZone(iso, seoul)).toContain('9:30');
+    expect(formatUtcInTimeZone(iso, { ...seoul, locale: 'ko-KR' })).toContain('2026. 1. 1.');
+    expect(() => formatUtcInTimeZone(iso, { timeZone: 'Not/AZone' })).toThrow(RangeError);
+  });
 });

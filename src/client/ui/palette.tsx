@@ -213,7 +213,8 @@ export function Palette({
       popup.dataset.side = placement.side;
     };
     const schedule = () => {
-      frame ||= requestAnimationFrame(reposition);
+      // Spelled out rather than `||=`: React Compiler skips a component using logical assignment.
+      if (!frame) frame = requestAnimationFrame(reposition);
     };
 
     reposition();
